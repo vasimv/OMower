@@ -1,0 +1,82 @@
+
+Following restrictions apply with OMower SDK:
+
+Warning! You have to patch variant.h and variant.cpp in the directory:
+~/.arduino/packages/arduino/hardware/sam/1.6.11/variants/arduino_due_x/
+Otherwise it won't work because standard files don't support all pins on ATSAM3X8EA-AU. Patches are
+included as patch.variant_h and patch.variant_cpp
+
+Interrupts:
+
+With USE_SOFTWARE_INTERRUPTS - you cannot use EMAC, HSMCI or SSC interrupts (as they're used as
+software interrupts handlers)
+
+
+Timers:
+
+You may not use Timer7 (used in omower-chassis.cpp to generate 100 Hz interrupts which are
+converted to poll10(), poll20() and poll50() calls)
+
+You may not use Timer5 (used in due-adc-scan.cpp to generate 38461 Hz interrupts to load
+scanned ADC readings)
+
+You may not use Timer0 if you want to use hardware PWM on PWM-F (TIOB0)
+
+You may not use Timer8 if you want to use hardware PWM on PWM-G (TIOB8)
+
+You may not use Timer6 if you want to use hardware PWM on PWM-H (TIOA6)
+
+
+I2C:
+
+You may not use standard arduino I2C functions, use functions from due-i2c-blocking.h
+
+With USE_SOFTWARE_INTERRUPTS - you may not use secondary I2C bus without modifying the SDK
+(as there is MAX11617 connected on the bus, getting read 100 times per second from max11617-adc-scan.cpp),
+without software interrupts - you can use secondary I2C from inside poll50/poll20/poll10 functions
+
+With USE_SOFTWARE_INTERRUPTS - Use main I2C bus functions only in poll50() routines (as the bus used
+to connect IMU module, its driver will write/read on the bus during poll50()'s run), without
+software interrupts - you can use main I2C bus from inside poll50/poll20/poll10 functions
+
+
+Serial:
+
+You may not use standard arduino functions for accessing serial interfaces as they are not blocking
+and may interfere with input/output from SDK drivers, will ruin interrupts handling. Use
+omower-serial.h (Serial, Serial1, Serial2, Serial3)  and omower-debug.h (Serial) interface functions.
+
+Debug console output ("Serial") will not output anything if used in the interrupt while main
+program outputs something to the interface), there is no any "queue" on it.
+
+Do not use write function from omower-serial.h in interrupts on console (UART), it may cause dead lock
+because debug() at same time
+
+
+Accessing PWM pins (analogWrite(), Servo library, etc):
+
+Use omower-pwm.h to generate PWM pulses instead analogWrite or Servo library. Better don't play 
+with PWM_BOOST and PWM_CC (they are handled by power class) as you may burn up hardware, really.
+
+analogWrite() on pins that are not on PWM-* connectors (34, 36, 43, 40, 9, 13, 12,
+5, 8, 7, 6) may mess drivers.
+
+Servo library may ruin interrupts handling (unless you patch it to not use Timer5)
+
+
+Code in poll10/20/50 functions:
+
+Without USE_SOFTWARE_INTERRUPTS - total time of all poll* functions should be less than 20 milliseconds.
+
+Just bear in mind that with software interrupts poll50() and poll20() functions calls may happen
+during poll10() functions and so on.
+
+Do not put long running code (like communications routines) in these functions as other poll* stuff
+will lose their time frames to execute.
+
+
+ADC:
+
+Do not use analogRead() function. Get already scanned values (at 38461 Hz rate) from adcArr[] array
+(due-adc-scan.h). It has the interface to use a buffer to store all scanned values for selected
+channels.

@@ -1,0 +1,98 @@
+Pin,Description,Marker on schematics,Info,Connector
+PA16,AD7 A0,SVcharge,Voltage on charging port,
+PA24,AD6 A1,SVin,Voltage after solar panel step-up (through diode - from charging port too!),
+PA23,AD5 A2,SVbatt,Battery voltage,
+PA22,AD4 A3,SIcharge,Charging current,
+PA6,AD3 A4,PERI-1,First wire perimeter sensor,PERI-1
+PA4,AD2 A5,PERI-2,Second wire perimter sensor,PERI-2
+PA3,AD1 A6,SItotal,Consumption current (total),
+PA2,AD0 A7,SVsolar,Solar panel voltage,
+PB17,AD10 A8,PERI-4,Fourth wire perimeter sensor,PERI-4
+PB18,AD11 A9,PERI-3,Third wire perimeter sensor,PERI-3
+PB19,AD12 A10,SImow,Consumption current of mowing motors,
+PC2,PWML0 D34,PWM-A,First motor,"PWM-A, Dual_MC33926_1"
+PC4,PWML1 D36,PWM-B,Second motor,"PWM-B, Dual_MC33926_1"
+PA20,PWML2 D43,PWM-C,Third motor (mowing motor or third wheel motor),Dual_MC33926_2
+PC8,PWML3 D40,PWM-D,Fourth motor,Dual_MC33926_2
+PC21,PWML4 D9,PWM-E,Mowing motor PPM output,PWM-E
+PB27,TIOB0 D13,PWM-F,First servo PPM,PWM-F
+PD8,TIOB8 D12,PWM-G,Second servo PPM,PWM-G
+PC25,TIOA6 D5,PWM-H,Third servo PPM,PWM-H
+PC22,PWML5 D8,PWM-FAN,Fan switch control (PWM),FAN
+PC23,PWML6 D7,PWM-Boost,Step-up switch PWM,TST-Boost
+PC24,PWML7 D6,PWM-CC,Charging switch PWM,TST-CC
+PA28,SPI0_NPCS0 D77,SPI0_CS1,First SPI device select SPI0,SPI-1
+PA29,SPI0_NPCS1 D87,SPI0_CS2,Second SPI device select SPI0,SPI-2
+PA25,SPI0_MISO D74,SPI0_MISO,MISO SPI0,SPI-1..2
+PA26,SPI0_MOSI D75,SPI0_MOSI,MOSI SPI0,SPI-1..2
+PA27,SPI0_SPCK D76,SPI0_SPCK,CLK SPI0,SPI-1..2
+PB12,TWD1 D20,SDA,SDA I2C,I2C-L...
+PB13,TWCK1 D21,SCL,SCL I2C,I2C-L...
+PA17,TWD0 D70,SDA2,SDA I2C (second bus),I2C2-L3V3
+PA18,TWCK0 D71,SCL2,SCL I2C (second bus),I2C2-L3V3
+PA9,UTXD D1,TXD0,Serial0 (console) - TXD,Orange Pi Zero
+PA8,URXD D0,RXD0,Serial0 (console) - RXD,Orange Pi Zero
+PA11,TXD0 D18,TXD1,Serial1 - TXD,SERIAL-1
+PA10,RXD0 D19,RXD1,Serial1 - RXD,SERIAL-1
+PA13,TXD1 D16,TXD2,Serial2 - TXD,SERIAL-2
+PA12,RXD1 D17,RXD2,Serial2 - RXD,SERIAL-2
+PD4,TXD3 D14,TXD3,Serial3 - TXD,SERIAL-3
+PD5,RXD3 D15,RXD3,Serial3 - RXD,SERIAL-3
+PB15,DAC0 D66,DAC0,DAC0 output,DAC-1
+PB16,DAC1 D67,DAC1,DAC1 output,DAC-2
+PA0,CANTX0 D69,CANTX,CAN output (requires external transceiver),CAN
+PA1,CANRX0 D68,CANRX,CAN input (requires external transceiver),CAN
+PC12,D51,BMP-L1,Bumper1 sensor - left,BUMPER-1
+PC13,D50,BMP-R1,Bumper1 sensor - right,BUMPER-1
+PC14,D49,BMP-L2,Bumper2 sensor - left,BUMPER-2
+PC15,D48,BMP-R2,Sumper2 sensor - right,BUMPER-2
+PA21,D73,~SF~-A,M2_~SF of first motor driver,Dual_MC33926_1
+PC30,D72,DIR-A,M2_IN2 of first motor driver,Dual_MC33926_1
+PC29,D10,MOT-EN1,EN of first motor driver,Dual_MC33926_1
+PC19,D44,~SF~-B,M1_~SF of first motor driver,Dual_MC33926_1
+PC18,D45,DIR-B,M1_IN2 of first motor driver,Dual_MC33926_1
+PC17,D46,~SF~-C,M2_~SF of second motor driver,Dual_MC33926_2
+PC16,D47,DIR-C,M2_IN2 of second motor driver,Dual_MC33926_2
+PC11,D109,MOT-EN2,EN of second motor driver,Dual_MC33926_2
+PB21,D52,~SF~-D,M1_~SF of second motor driver,Dual_MC33926_2
+PB20,D65,DIR-D,M1_IN2 of second motor driver,Dual_MC33926_2
+PC1,D33,RAIN,Rain sensor,RAIN
+PC3,D35,LED1,20mA LED external,LED1
+PC5,D36,LED2,20mA LED external,LED2
+PC6,D37,LED3,70mA LED external,LED3-HC
+PC7,D38,BEEPER,Beeper self-oscilating,Beeper
+PC9,D41,S-END,Actuator end-stop switch,S-END
+PA19,D42,ACTIVITY,LED 2ma onboard,
+PD10,D32,SHUTDOWN,Emergency shutdown relay,
+PA5,D102,LAWN-1S,Charge first lawn sensor,LAWN-1
+PA7,D31,LAWN-1R,First lawn sensor plate,LAWN-1
+PD9,D30,LAWN-2S,Charge second lawn sensor,LAWN-2
+PD7,D11,LAWN-2R,Second lawn sensor plate,LAWN-2
+PB0,D92,ODO-A1,First motor odometry sensor,MOTOR-A
+PB1,D93,ODO-A2,First motor odometry sensor,MOTOR-A
+PB2,D94,ODO-B1,Second motor odometry sensor,MOTOR-B
+PC10,D108,ODO-B2,Second motor odometry sensor,MOTOR-B
+PB3,D95,ODO-C1,Third motor odometry sensor,MOTOR-C
+PB4,D96,ODO-C2,Third motor odometry sensor,MOTOR-C
+PB5,D97,ODO-D1,Fourth motor odometry sensor,MOTOR-D
+PB6,D98,ODO-D2,Fourth motor odometry sensor,MOTOR-D
+PB7,D99,ODO-X1,Mowing motor odometry sensor,ODO-X
+PB8,D100,ODO-X2,Mowing motor odometry sensor,ODO-X
+PA14,D23,TRIG-1,First sonar trigger,SONAR-1
+PC28,D3,ECHO-1,First sonar echo,SONAR-1
+PA15,D24,TRIG-2,Second sonar trigger,SONAR-2
+PB14,D53,ECHO-2,Second sonar echo,SONAR-2
+PD0,D25,TRIG-3,Third sonar trigger,SONAR-3
+PB22,D105,ECHO-3,Third sonar echo,SONAR-3
+PD1,D26,TRIG-4,Fourth sonar trigger,SONAR-4
+PB23,D78,ECHO-4,Fourth sonar echo,SONAR-4
+PD2,D27,TRIG-5,Fifth sonar trigger,SONAR-5
+PB24,D103,ECHO-5,Fifth sonar echo,SONAR-5
+PD3,D28,TRIG-6,Sixth sonar trigger,SONAR-6
+PB25,D2,ECHO-6,Sixth sonar echo,SONAR-6
+PB9,D101,BTTN,Control button,BUTTON
+PC20,D107,STEP,Step of actuator,"DRV8825_1, DRV8825_2"
+PC26,D4,SDIR,Direction of actuator,"DRV8825_1, DRV8825_2"
+PC27,D106,~SRST,Reset of actuator driver,"DRV8825_1, DRV8825_2"
+PB26,D22,~SFLT-1,Overload of first actuator driver,DRV8825_1
+PD6,D29,~SFLT-2,Overload of second actuator driver,DRV8825_2
