@@ -86,3 +86,90 @@ use all GPIOs of ATSAM3X8E MCU.
 
 Clone https://github.com/vasimv/OMower_Simple and  put its folder into ~/Arduino, compile and upload. Use
 pfodApp to control the robot.
+
+
+HOW IT WORKS
+
+OMower software must define all needed objects, set pointers to other objects where it needed (like
+gps object needs to set pointer to imu object), call all begin() functions of objects (hardware init, called
+just once), then sets values for objects parameters and call init() functions (software init, can be
+called many times to reset the object's hardware), define poll10/20/50 hooks functions to call objects
+poll*() functions from there (see OMower_Simple.ino for example).
+
+One of most important classes is motors object (see omower-motors.h), it controls motor drivers from its
+poll10() function. User just calls functions roll/move (to simple turning or driving in a specific
+direction) or rollCourse/MoveCourse to drive with navigation by something (compass, gps, etc). 
+
+IMU stuff (compass, gyro, accelerometer) are read in imu object (omower-imu.h) by its poll50() function.
+It does filtering/calculation and provide angle values for compass and pitch/yaw/roll in degrees
+(see omower-imu.h). The imu object is daughter class of navThing class (see omower-root.h) that means
+it has readCourseError() function, so it can be used for navigation by motors object. Currently it supports
+navigation by compass angle.
+
+GPS object is daughter class of navThing too, so it supports navigation. All coordinates are stored in
+int32_t values (so, 18.3495,-68.5960 will be 183495000,-685960000 actually) to improve precision (otherwise
+it would need large float class which does not exists in arduino framework). The user software must
+interface with a GPS receiver and feed NMEA lines from it to gps::parseString() function or raw
+coordinates to gps::settCoords() (see omower-gps.h). In precision mode (when centimeters-precise
+coordinates are used) - the gps object calculates robot's true coordinates using offset of GPS's antenna
+(distance from robot's center and angle).
+
+Power object (omower-power.h) handles power stuff (battery, solar panel and charger regulators) and
+provides human-readable values of voltages and currents.
+
+Mow object (omower-mow.h) manages the mowing motor(s) and its actuator (if have) to adjust cutting height.
+Note, currently it supports only PPM regulation on PWM-E output (brushless motors ESC connected to it), but
+will support brushed motors too (in 2 wheel motors + mow motor configuration).
+
+Perimeter object (omower-perimeter.h) supports up to 4 wire perimeter sensors (same as for ardumower, just
+inductor+analog amplifier).
+
+Serial object (omower-serial.h) handles communication with serial ports (as you can't use arduino's
+objects for that because possible interrupts conflicts). It has also better printf() functions which
+supports %f/%g for floats.
+
+Sonars object (omower-sonars.h) handles HC-SR04 sonars (up to 6). It returns sonar's reported distance
+(in centimeters) through its readSonar() function. Since motors routines do not check for any obstacles
+during movement (except overcurrent on motors drivers), the user software must check sonars and bumpers
+to avoid obstacles and move around them.
+
+At start of initialization chassis object (omower-chassis.h) initializes interrupts. This is most important
+task as almost all of OMower's stuff is done through interrupts hooks. It configures TIM7 to generate
+interrupts 100 times per second.
+
+At every TIM7 interrupt, it reads 12 channels of MAX11617 ADC to "uint16_t adc11617Arr[]"
+(defined in max11617-adc-scan.h), this array is accessed from other OMower's objects (like power object, but
+of course you can read its values directly).
+
+Every second cycle of TIM7 interrupt it calls user's poll50() hook, at every fifth - poll20() hook, at
+every tenth - poll10(). User's software must define these functions, set it through
+chassis::setHooksPoll() function and call all other objects poll10/20/50 functions from there. By default,
+to call hook functions it creates software interrupts for each kind of them (defined symbol
+USE_SOFTWARE_INTERRUPTS in omower-defs-omowerv3.h), so they are running asynchronous. Without
+USE_SOFTWARE_INTERRUPTS - poll50/20/10 hooks called after each other and you are limited to 20ms total time
+for all of them (OMower SDK functions were optimized to comply with that time and software interrupts
+can be turned off but if you place some other CPU hungry stuff in it - you will need software interrupts).
+
+It was possible to create automatic binding for poll functions (so user wouldn't need to call all
+objects poll*() functions from firmware code), but it was decided not to do so to simplify the SDK
+internals.
+
+All internal ADC channels of ATSAM3X8E are read by separate TIM5 interrupts 38461 times per second to the
+"adcArr[]" array (see due-adc-scan.h for its structure). This array is accessed by other omower objects
+from their poll10/20/50 functions, so no need to read it directly (but you still can do). Note, it is
+possible to add circle buffer to every channel read, so you won't miss any of value (this method is used
+in wire perimeter class for FFT filtering of the perimeter signal) through adcAddChannel()
+function (due-adc-scan.h).
+
+PWM and TCC (in PWM mode) outputs are configured through pwmServo object (omower-pwmservo.h), don't use
+other methods to modify their output as it may conflict with OMower code. Since the code uses some
+MCU's timers, you won't able to use these for other things (Timer0, Timer6, Timer8 in pwmServo, Timer5 in
+due-adc-scan.cpp, Timer7 in chassis). Usually, nothing uses them but some of arduino libraries do (like
+Servo library, which you wouldn't need as there is pwmServo object).
+
+Debug function debug() is defined in omower-debug.h. By default, it sends its output to Serial device, has
+ability to set priority for debug messages (so low-priority stuff won't be send at all).
+
+There are some other objects which are easy to understand (omower-rtc.h for RTC clock, omower-current*.h for
+current sensors, omower-odometry.h for odometry sensors), please, look their header files and OMower_Simple
+firmware code if you want to know how they are used.
