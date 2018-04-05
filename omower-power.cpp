@@ -206,6 +206,11 @@ _hwstatus power::begin() {
   digitalWrite(PIN_SHUTDOWN, LOW);
 } // _hwstatus power::begin()
 
+// Emergency shutdown
+_status power::emergShutdown() {
+  digitalWrite(PIN_SHUTDOWN, HIGH);
+} // _status power::emergShutdown()
+
 numThing power::numThings() {
   return 7;
 } // numThing power::numThings()
