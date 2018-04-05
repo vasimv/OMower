@@ -34,6 +34,7 @@ _status perimeter::init() {
   memset((void *) signalCounter, 0, sizeof(signalCounter));
   minMaxPos = 0;
   periCycle = 0;
+  enabledPerimeter = true;
   lastInside = millis();
   // Fill in sigsProcessed array
   for (uint8_t i = 0; i < sizeof(sigcode); i++)
@@ -69,13 +70,16 @@ float perimeter::quality(numThing n) {
 
 // Called 20 times per second
 void perimeter::poll20() {
+  if (!enabledPerimeter)
+    return;
+
   // Check all perimeters sensors
   for (uint8_t i = 0; i < _PERIMETERS_NUM; i++) {
     matchedFilter(i);
     if (inside(i))
       lastInside = millis();
   }
-} // void perimeter::poll50()
+} // void perimeter::poll20()
 
 // Soft error (outside timer reached)
 _hwstatus perimeter::softError() { 
@@ -303,3 +307,13 @@ int16_t perimeter::corrFilter(uint16_t *ip, uint8_t nPts, float &quality, uint16
     return sumMin / 64;
   }  
 } // int16_t perimeter::corrFilter(uint16_t *ip, uint8_t nPts, float &quality, uint16_t &offset)
+
+// Disable perimeter
+_status perimeter::disableThings() {
+  enabledPerimeter = false;
+} // _status perimeter::disableThings()
+
+// Enable perimeter
+_status perimeter::enableThings() {
+  enabledPerimeter = true;
+} // _status perimeter::enableThings()

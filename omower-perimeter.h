@@ -33,6 +33,10 @@ public:
   // Software init
   _status init();
 
+  // Disable/enable perimeter (to save MCU time)
+  _status enableThings();
+  _status disableThings();
+
   // Settings variables
   // Minimum quality (ignored if lower)
   float minQuality;
@@ -77,6 +81,9 @@ public:
   void poll20();
 
 private:
+  // Enabled or disabled status
+  boolean enabledPerimeter;
+
   // Samples buffer
   uint16_t samples[_PERIMETERS_NUM][_PERIMETERS_BUF_SIZE];
 
