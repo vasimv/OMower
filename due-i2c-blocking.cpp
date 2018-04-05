@@ -148,7 +148,7 @@ uint16_t i2cReadEx(uint8_t bus, uint8_t device, uint8_t address, boolean needAdd
           break;
 
         if (status & (TWI_SR_NACK | TWI_SR_ARBLST | TWI_SR_OVRE)) {
-          WIRE_INTERFACE->TWI_CR = TWI_CR_STOP;
+          WIRE1_INTERFACE->TWI_CR = TWI_CR_STOP;
           return i;
         }
 
