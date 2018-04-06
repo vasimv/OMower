@@ -89,8 +89,10 @@ uint16_t serial::write(numThing n, unsigned char *buf, uint16_t len, uint16_t ti
     for (sent = 0; sent < len; sent++) {
       // Wait for ready to transmit
       while (!(UART->UART_SR & UART_SR_TXRDY)) {
-        if ((millis() - tStart) >= tTimeout)
+        if ((millis() - tStart) >= tTimeout) {
+          debugBusy = false;
           return sent;
+        }
       }
       // Send next byte
       UART->UART_THR = buf[sent];
