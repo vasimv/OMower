@@ -33,6 +33,11 @@ uint32_t rtc::getUnixTime() {
   return myRTC->unixtime();
 } // uint32_t rtc::getUnixTime()
 
+void rtc::setUnixTime(uint32_t unixtime) {
+  myRTC->setClock(unixtime);
+  readRTC();
+} // void rtc::setUnixTime(uint32_t unixtime)
+
 _status rtc::saveRTC() {
   myRTC->setDate(day, month, year);
   myRTC->setTime(hour, minute, second);
