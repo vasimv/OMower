@@ -31,6 +31,8 @@ public:
   // (their bus/master controller)
   virtual _hwstatus checkThing(numThing n) { return _hwstatus::ONLINE; }
 
+  virtual _hwstatus softError() { return checkThing(-1); }
+
   // Returns error counts number for the device (-1 - sum for all of them)
   virtual int errorThing(numThing n) { return 0; }
 
