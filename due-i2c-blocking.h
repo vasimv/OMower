@@ -8,7 +8,7 @@
 #include <stdint.h>
 
 // Timeout (in cyles) for next byte wait
-#define TWI_TIMEOUT_COUNTER 1024
+#define TWI_TIMEOUT_COUNTER 16383
 
 // Initialize I2C bus (speed = 100000 or 400000)                                                              
 void i2cInit(uint8_t bus, uint32_t speed);
