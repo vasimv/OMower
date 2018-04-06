@@ -5,6 +5,7 @@
 #define OMOWER_IMU_H
 
 #include <omower-root.h>
+#include <omower-defs.h>
 #include <omower-nvmem.h>
 #include <Arduino.h>
 
@@ -95,6 +96,7 @@ private:
   boolean accelCalibrated;
   boolean compassCalibrated;
   boolean baroCalibrated;
+  boolean imuLocked;
 
   // Compass need temperature compensation
   boolean compassNeedComp;
@@ -110,6 +112,7 @@ private:
     float z;
   };
 
+#ifdef IMU_GY80
   // gyro read buffer
   struct {
     uint8_t xl;
@@ -119,6 +122,7 @@ private:
     uint8_t zl;
     uint8_t zh;
   } gyroFifo[32];
+#endif
 
   // Gyro offsets
   struct _vec_float_t gyroOfs;
@@ -160,16 +164,13 @@ private:
   struct _vec_float_t com;
   struct _vec_float_t gyro;
 
-  // BMP085 calibration values
+  // Baro/temperature sensor calibration values
   struct {
     int16_t ac1, ac2, ac3;
     uint16_t ac4, ac5, ac6;
     int16_t b1, b2;
     int16_t mb, mc, md;
   } bmpCalib;
-
-  // Reading temperature (instead of pressure) at next interrupt
-  boolean readingTemperature;
 
   // Calculated values in -M_PI..M_PI range
   float accPitch, accRoll, comYaw, filtPitch, filtRoll, filtYaw, gyroNoise, filtTemp, filtPress;
@@ -188,6 +189,10 @@ private:
 
   // Complementary filter
   float complementary(float newAngle, float newRate, int looptime, float angle);
+
+#ifdef IMU_GY80
+  // Reading temperature (instead of pressure) at next interrupt
+  boolean readingTemperature;
 
   // L3G4200D gyro sensor init
   boolean initL3G4200D();
@@ -218,6 +223,39 @@ private:
   
   // Read data from BMP085
   void readBMP085();
+
+  // Calibrate accel of GY80
+  _status calibAccelGY80();
+
+  // Calibrate gyro of GY80
+  _status calibGyroGY80();
+#endif // IMU_GY80
+
+#ifdef IMU_MPU9250
+  // Check if MPU6500 and AK8963 working
+  boolean checkMPU9250();
+
+  // Accel&gyro sensor MPU6500 init
+  void initMPU6500();
+
+  // send data to AK8693 through MPU9250
+  void sendAK8963(uint8_t reg, uint8_t val);
+
+  // receive data from AK8693 through MPU9250
+  uint8_t recvAK8963(uint8_t reg, uint8_t *buf, uint8_t size);
+
+  // Mag sensor AK8963 init
+  void initAK8963();
+
+  // Read from gyro&accel sensor MPU9250 (true if new data arrived)
+  boolean readMPU6500();
+  
+  // Read from magnetometer sensor AK8963
+  void readAK8963();
+
+  // Calibration stuff for MPU6500
+  void calibMPU6500();
+#endif // IMU_MPU9250
 
   // Swap two bytes
   void swapBytes(uint8_t *p);
