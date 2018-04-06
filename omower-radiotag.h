@@ -20,6 +20,7 @@ public:
   // Current coordinates (all coordinates in centimeters, axis Y - north-south)
   int32_t coordX;
   int32_t coordY;
+  uint16_t coordRoom;
 
   // Approximate speed (in cm per second)
   uint16_t speed;
@@ -60,7 +61,7 @@ public:
 
 private:
   // Read buffer
-  char bufRead[128];
+  uint8_t bufRead[128];
   uint8_t cntBuf;
 
   // Last timestamp of data received

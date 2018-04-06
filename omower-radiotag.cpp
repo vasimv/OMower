@@ -12,7 +12,7 @@ _status radiotag::init() {
   lastReceived = 0;
   imuSens = NULL;
   serialPorts = NULL;
-  tagPort = 3;
+  tagPort = -1;
   maxTimeout = 400;
   cntBuf = 0;
   return _status::NOERR;
@@ -30,7 +30,7 @@ void radiotag::poll10() {
   uint8_t i;
 
   // Try to read modbus packets from serial port
-  if (serialPorts) {
+  if (serialPorts && (tagPort > 0)) {
     while (serialPorts->available(tagPort)) {
       bufRead[cntBuf] = serialPorts->read(tagPort);
       cntBuf++;
@@ -52,12 +52,13 @@ void radiotag::poll10() {
           memmove((void *) bufRead, (void *) (bufRead + i), cntBuf - i);
           cntBuf = cntBuf - i;
         }
-        char *pkt = bufRead;
+        uint8_t *pkt = bufRead;
 
         // Radiotag's modbus output packet is always 25 bytes length
         if (cntBuf >= 25) {
           if (modbusCrc(pkt, 23) == getModbus16(pkt + 23)) {
             // We've found valid CRC in the packet, read coordinates
+            coordRoom = (uint16_t) getModbus16(pkt + 5);
             coordX = (int32_t) getModbus32(pkt + 9);
             coordY = (int32_t) getModbus32(pkt + 13);
             validCoords = true;
