@@ -47,9 +47,9 @@ Wifi/Bluetooth adapter connected to serial port of MCU.
 
 Multiple PPM/servo outputs for external stuff with standard 3-pins connectors.
 
-Note, board requires external components: external IMU GY-80 board, external motors controllers and
-steppig motor driver boards. External charger voltage must be 6 volts higher than maximum battery voltage
-(i.e. for 14.6V LiFePo-battery it must provide 20..34V).
+Note, board requires external components: external IMU GY-80 board or MPU-9250 board, external motors
+controllers and steppig motor driver boards. External charger voltage must be 6 volts higher than
+maximum battery voltage (i.e. for 14.6V LiFePo-battery it must provide 20..34V).
 
 Latest version is 3, in v4 version the board will include FRAM chip to store settings/waypoints/etc (as
 ATSAM3X8E's flash is getting erased when uploading new firmware) and onboard IMU MPU9250.
