@@ -39,6 +39,24 @@
 #define CH_PWM_BOOST PWML6_PC23
 #define CH_PWM_CC PWML7_PC24
 
+// GY-80 module as IMU
+#define IMU_GY80
+
+// MPU-9250 (MPU6500+AK8963 on signle chip) as IMU
+// #define IMU_MPU9250
+
+// Invert bumper's signal (LOW - obstacle)
+#define BUMPERS_INVERT
+
+// Number of bumper sensors
+#define BUMPERS_NUM 4
+
+// Bumper pins definitions
+#define PIN_BUMP_LEFTFORW 51
+#define PIN_BUMP_RIGHTFORW 50
+#define PIN_BUMP_LEFTBACK 49
+#define PIN_BUMP_RIGHTBACK 48
+
 // Dual Polulu MC33926
 #define MOT_DRIVER_DUAL_MC33926
 // STM-Nucleo IHM12A1 driver on test car
