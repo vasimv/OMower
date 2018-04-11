@@ -11,7 +11,7 @@
 boolean serial::available(numThing n) {
   switch (n) {
     case 0:
-      return Serial.available();
+      return consAvailable();
     case 1:
       return Serial1.available();
     case 2:
@@ -27,7 +27,10 @@ boolean serial::available(numThing n) {
 unsigned char serial::read(numThing n) {
   switch (n) {
     case 0:
-      return (unsigned char) Serial.read();
+      unsigned char tmp;
+      while (consAvailable() == 0);
+      consRead(&tmp, 1);
+      return tmp;
     case 1:
       return (unsigned char) Serial1.read();
     case 2:
@@ -43,8 +46,7 @@ unsigned char serial::read(numThing n) {
 void serial::setBaud(numThing n, uint32_t baud) {
   switch (n) {
     case 0:
-      Serial.begin(baud);
-      UART->UART_IDR = UART_IDR_TXRDY;
+      consInit(baud);
       return;
     case 1:
       Serial1.begin(baud);
@@ -68,7 +70,7 @@ void serial::setBaud(numThing n, uint32_t baud) {
 uint16_t serial::write(numThing n, unsigned char *buf, uint16_t len, uint16_t timeout) {
   uint32_t tStart = millis();
   uint16_t sent = 0;
-  uint16_t tTimeout = timeout;
+  int32_t tTimeout = timeout;
   Usart *port;
 
   // Zero timeout specified
@@ -77,27 +79,21 @@ uint16_t serial::write(numThing n, unsigned char *buf, uint16_t len, uint16_t ti
 
   // Serial console is UART, working through separate interface
   if (n == 0) {
-    // Well, debug function is working, we better wait a bit
-    while (debugBusy) {
-      if ((millis() - tStart) >= 10)
-        return sent;
-    }
-    debugBusy = true;
-    // Non-interrupt output to serial port
-    UART->UART_IDR = UART_IDR_TXRDY;
-    UART->UART_CR |= UART_CR_TXEN;
-    for (sent = 0; sent < len; sent++) {
-      // Wait for ready to transmit
-      while (!(UART->UART_SR & UART_SR_TXRDY)) {
-        if ((millis() - tStart) >= tTimeout) {
-          debugBusy = false;
-          return sent;
-        }
+    uint16_t wrote;
+
+    debugDisable = true;
+    wrote = consWrite(buf, len);
+    sent = wrote;
+    if (wrote != len) {
+      while (sent != len) {
+        while (((millis() - tStart) < tTimeout) && !consSendBusy());
+        if ((millis() - tStart) >= tTimeout)
+          break;
+        wrote = consWrite(buf + sent, len - sent);
+        sent += wrote;
       }
-      // Send next byte
-      UART->UART_THR = buf[sent];
     }
-    debugBusy = false;
+    debugDisable = false;
     return sent;
   }
 
@@ -150,7 +146,7 @@ numThing serial::numThings() {
 // Hardware init
 _hwstatus serial::begin() {
   debug(L_DEBUG, (char *) F("serial::begin\n"));
-  NVIC_SetPriority(UART_IRQn, 3);
+  NVIC_DisableIRQ(UART_IRQn);
   NVIC_SetPriority(USART0_IRQn, 3);
   NVIC_SetPriority(USART1_IRQn, 3);
   NVIC_SetPriority(USART2_IRQn, 3);
