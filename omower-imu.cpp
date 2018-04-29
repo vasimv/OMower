@@ -7,22 +7,35 @@
 #include <omower-motors.h>
 #include <omower-debug.h>
 
+
+#define MADGWICK_RATE 50
+#define KALMAN_Q_ANGLE 0.1f
+#define KALMAN_Q_BIAS 0.03f
+#define KALMAN_R_MEASURE 0.11f
+
 #ifdef IMU_GY80
+#define MADGWICK_BETA 0.03f
 // -------------I2C addresses ------------------------
 #define ADXL345B (0x53)          // ADXL345B acceleration sensor (GY-80 PCB)
 #define HMC5883L (0x1E)          // HMC5883L compass sensor (GY-80 PCB)
 #define L3G4200D (0xD2 >> 1)     // L3G4200D gyro sensor (GY-80 PCB)
 #define BMP085 (0x77)
+// LSP per DPS for 2000DPS range
+#define L3G4200D_GRES 0.07f
 #endif
 
 #ifdef IMU_MPU9250
+#define MADGWICK_BETA 0.03f
 #define MPU_ADDR 0x68
 #define AK_ADDR 0x0C
 #define MPU9250_ID 0x71
 #define AK8963_ID 0x48
 
 #define MPU_ARES 16384.0
-#define MPU_GRES 250.0
+// // LSB per DPS for 250DPS
+// #define MPU_GRES 0.007633588f
+// LSB per DPS for 2000DPS range
+#define MPU_GRES 0.0609756f
 
 // MPU9250 (MPU6500+AK8963) registers addresses
 #define MPU_ACCEL_CONFIG 0x1C
@@ -67,8 +80,50 @@
 #define AK_AK8963_XOUT_L 0x03
 // Constants
 #define MPU_CLOCK_SEL_PLL 0x01
-#define MPU_I2C_MST_EN 0x20
+#define MPU_I2C_MST_EN 0x60
 #define MPU_I2C_MST_CLK 0x0D
+#endif
+
+#ifdef IMU_FXOS8700
+#define MADGWICK_RATE 50
+#define MADGWICK_BETA 0.03f
+// FXOS8700CQ I2C address (with pins SA0=0, SA1=0)
+#define FXOS_ADDR 0x1E
+
+#define FXOS_STATUS 0x00
+#define FXOS_F_SETUP 0x09
+#define FXOS_WHOAMI 0x0D
+#define FXOS_XYZ_DATA_CFG 0x0E
+#define FXOS_CTRL_REG1 0x2A
+#define FXOS_CTRL_REG2 0x2B
+#define FXOS_M_CTRL_REG1 0x5B
+#define FXOS_M_CTRL_REG2 0x5C
+#define FXOS_M_CTRL_REG3 0x5D
+#define FXOS_MAX_X_MSB 0x45
+#define FXOS_MIN_X_MSB 0x4B
+#define FXOS_M_OUT_X_MSB 0x33
+#define FXOS_M_OFF_X_MSB 0x3F
+#define FXOS_ID 0xC7
+#define FXOS_ARES 16384.0
+#endif
+
+#ifdef IMU_FXAS21002
+// FXAS21002C I2C address (with pin SA0=0)
+#define FXAS_ADDR 0x20
+
+#define FXAS_STATUS 0x00
+#define FXAS_WHOAMI 0x0C
+#define FXAS_CTRL_REG0 0x0D
+#define FXAS_CTRL_REG1 0x13
+#define FXAS_CTRL_REG2 0x14
+#define FXAS_CTRL_REG3 0x15
+#define FXAS_TEMP 0x12
+#define FXAS_F_SETUP 0x09
+#define FXAS_ID 0xD7
+// // LSB per DPS for 250DPS from datasheet (actually, 255?)
+// #define FXAS_GRES 0.0078125f
+// LSB per DPS for 2000DPS
+#define FXAS_GRES 0.0625f
 #endif
 
 // permanent calibration values
@@ -79,7 +134,7 @@
 
 // Poll 50 times per second
 void imu::poll50() {
-  unsigned int loopTime;
+  float loopTime;
   unsigned long now;
   float cosRoll, cosPitch, sinRoll, sinPitch;
 
@@ -87,7 +142,7 @@ void imu::poll50() {
   if (errorStatus != 0 || imuLocked)
     return;
 
-  debug(L_DEBUG, "imu::poll50\n");
+  // debug(L_DEBUG, "imu::poll50\n");
   // Read data from sensors
   #ifdef IMU_GY80
   readBMP085();
@@ -101,42 +156,47 @@ void imu::poll50() {
   if (!readMPU6500())
     return;
   #endif
-
+  #ifdef IMU_FXOS8700
+  if (!readFXOS8700())
+    return;
+  #endif
+  #ifdef IMU_FXAS21002
+  if (!readFXAS21002())
+    return;
+  #endif
 
   // Calculate time from previous reading
   now = millis();
-  loopTime = (now - lastTime);
+  loopTime = (float) (now - lastTime) / 1000.0;
   lastTime = now;
 
-  // Calculate roll and pitch
+  #ifdef MADGWICK_FILTER
+  // Calculate roll, pitch and yaw
+  madgwickUpdate();
+  if (comSelfTest == 0) {
+    filtPitch = accPitch;
+    filtRoll = accRoll;
+    filtYaw = comYaw;
+  }
+  #else
+  // Calculate roll and pitch with complementary filter
   accPitch = atan2(-acc.x, sqrt(sq(acc.y) + sq(acc.z)));
   accRoll = atan2(acc.y, acc.z);
   accPitch = scalePIangles(accPitch, filtPitch);
   accRoll = scalePIangles(accRoll, filtRoll);
-//  filtPitch = kalman(accPitch, gyro.x, loopTime, filtPitch);
+  #ifdef KALMAN_FILTER
+  filtPitch = kalmanY.getAngle(accPitch, gyro.x, loopTime);
+  filtRoll = kalmanX.getAngle(accRoll, gyro.y, loopTime);
+  #else
   filtPitch = accPitch;
-  filtPitch = scalePI(filtPitch);
-//  filtRoll = kalman(accRoll, gyro.y, loopTime, filtRoll);
   filtRoll = accRoll;
+  #endif
+  filtPitch = scalePI(filtPitch);
   filtRoll = scalePI(filtRoll);
   cosRoll = cos(filtRoll);
   cosPitch = cos(filtPitch);
   sinRoll = sin(filtRoll);
   sinPitch = sin(filtPitch);
-
-  // Calculate yaw
-#if 0
-  // Old ardumower code
-  comTilt.x = com.x * cosPitch + com.z * sinPitch;
-  comTilt.y = com.x * sinRoll * sinPitch + com.y * cosRoll
-              - com.z * sinRoll * cosPitch;
-  comTilt.z = -com.x * cosRoll * sinPitch + com.y * sinRoll
-              + com.z * cosRoll * cosPitch;
-  comYaw = scalePI(atan2(comTilt.y, comTilt.x));
-  comYaw = scalePIangles(comYaw, filtYaw);
-  filtYaw = complementary(comYaw, -gyro.z, loopTime, filtYaw);
-  filtYaw = scalePI(filtYaw);
-#endif
 
   if (comSelfTest == 0) {
     comTilt.x = com.x * cosPitch + com.y * sinRoll * sinPitch + com.z * cosRoll * sinPitch;
@@ -146,9 +206,10 @@ void imu::poll50() {
     filtYaw = complementary(comYaw, -gyro.z, loopTime, filtYaw);
     filtYaw = scalePI(filtYaw);
   }
+  #endif
 
-  debug(L_DEBUG, (char *) F("imu: P %g, R %g, Y %g, T %g, MX: %g, MY: %g e %d\n"),
-        filtPitch, filtRoll, filtYaw, filtTemp, com.x, com.y, errorStatus);
+  debug(L_DEBUG, (char *) F("imu: P %g, R %g, Y %g, T %g\n"),
+        filtPitch, filtRoll, filtYaw, filtTemp);
 #ifdef DEBUG_IMU_FULL
   debug(L_DEBUG, (char *) F("IF: %g %g %g  %g %g %g\n"),
 	acc.x, acc.y, acc.z, gyro.x, gyro.y, gyro.z);
@@ -197,16 +258,30 @@ _status imu::calibAccel() {
     return _status::ERR;
   return _status::NOERR;
 #endif
+#ifdef IMU_FXOS8700
+  imuLocked = true;
+  calibFXOS8700();
+  imuLocked = false;
+  return _status::NOERR;
+#endif
 } // _status imu::calibAccel() 
 
 // Calibrate gyroscope
 _status imu::calibGyro() {
+  _status res = _status::NOERR;
+
+  imuLocked = true;
 #ifdef IMU_GY80
-  return calibGyroGY80();
+  res = calibGyroGY80();
 #endif
 #ifdef IMU_MPU9250
-  return _status::NOERR;
+  // Do nothing, calibMPU6500 will calibrate both accelerometer and gyroscope
 #endif
+#ifdef IMU_FXAS21002
+  calibFXAS21002();
+#endif
+  imuLocked = false;
+  return res;
 } // _status imu::calibGyro()
 
 #ifdef IMU_MPU9250
@@ -251,6 +326,9 @@ boolean imu::checkMPU9250() {
 // MPU6500 init
 void imu::initMPU6500() {
   uint8_t c;
+  uint8_t data[6];
+  int16_t accel_bias_reg[3];
+  int16_t gyro_bias[3];
 
   // wake up device
   i2cWriteOne(bus, MPU_ADDR, MPU_PWR_MGMT_1, 0x00); // Clear sleep mode bit (6), enable all sensors 
@@ -273,15 +351,15 @@ void imu::initMPU6500() {
   // With the MPU9250, it is possible to get gyro sample rates of 32 kHz (!), 8 kHz, or 1 kHz
   i2cWriteOne(bus, MPU_ADDR, MPU_CONFIG, 0x03);  
 
-  // Set sample rate = gyroscope output rate/(1 + SMPLRT_DIV), 42Hz
-  i2cWriteOne(bus, MPU_ADDR, MPU_SMPLRT_DIV, 0x17);
+  // Set sample rate = gyroscope output rate/(1 + SMPLRT_DIV), 100Hz
+  i2cWriteOne(bus, MPU_ADDR, MPU_SMPLRT_DIV, 0x09);
  
-  // Set gyroscope full scale range (250DPS)
+  // Set gyroscope scale range (2000DPS)
   // Range selects FS_SEL and GFS_SEL are 0 - 3, so 2-bit values are left-shifted into positions 4:3
   i2cRead(bus, MPU_ADDR, MPU_GYRO_CONFIG, &c, 1);
   // c = c & ~0xE0; // Clear self-test bits [7:5] 
   c = c & ~0x03; // Clear Fchoice bits [1:0] 
-  c = c & ~0x18; // Clear GFS bits [4:3]
+  c = c | 0x18; // Set GFS bits [4:3]
   i2cWriteOne(bus, MPU_ADDR, MPU_GYRO_CONFIG, c); // Write new GYRO_CONFIG value to register
   
   // Set accelerometer full-scale range configuration (2G)
@@ -301,9 +379,6 @@ void imu::initMPU6500() {
   // Enable all sensors
   i2cWriteOne(bus, MPU_ADDR, MPU_PWR_MGMT_2, 0x00);
 
-  // The accelerometer, gyro, and thermometer are set to 1 kHz sample rates, 
-  // but all these rates are further reduced by a factor of 5 to 200 Hz because of the SMPLRT_DIV setting
-
   // Configure Interrupts enable
   // Not really needed on OMower (as it doesn't have connection for INT pin)
   i2cWriteOne(bus, MPU_ADDR, MPU_INT_PIN_CFG, 0x20);    
@@ -312,8 +387,51 @@ void imu::initMPU6500() {
   // Configure I2C master interface to work with AK8963 (400KHz)
   i2cWriteOne(bus, MPU_ADDR, MPU_PWR_MGMT_1, MPU_CLOCK_SEL_PLL);
   i2cWriteOne(bus, MPU_ADDR, MPU_USER_CTRL, MPU_I2C_MST_EN);
+  i2cWriteOne(bus, MPU_ADDR, MPU_FIFO_EN, 0xF8);     // Enable gyro and accelerometer sensors for FIFO
   i2cWriteOne(bus, MPU_ADDR, MPU_I2C_MST_CTRL, MPU_I2C_MST_CLK);
   delay(50);
+
+  // Rewrite calibration values
+  accel_bias_reg[0] = accOfs.x;
+  accel_bias_reg[1] = accOfs.y;
+  accel_bias_reg[2] = accOfs.z;
+
+  data[0] = (accel_bias_reg[0] >> 8) & 0xFF;
+  data[1] = (accel_bias_reg[0])      & 0xFF;
+  // preserve temperature compensation bit when writing back to accelerometer bias registers
+  data[2] = (accel_bias_reg[1] >> 8) & 0xFF;
+  data[3] = (accel_bias_reg[1])      & 0xFF;
+  // preserve temperature compensation bit when writing back to accelerometer bias registers
+  data[4] = (accel_bias_reg[2] >> 8) & 0xFF;
+  data[5] = (accel_bias_reg[2])      & 0xFF;
+  // preserve temperature compensation bit when writing back to accelerometer bias registers
+
+  // Push accelerometer biases to hardware registers
+  i2cWriteOne(bus, MPU_ADDR, MPU_XA_OFFSET_H, data[0]);
+  i2cWriteOne(bus, MPU_ADDR, MPU_XA_OFFSET_L, data[1]);
+  i2cWriteOne(bus, MPU_ADDR, MPU_YA_OFFSET_H, data[2]);
+  i2cWriteOne(bus, MPU_ADDR, MPU_YA_OFFSET_L, data[3]);
+  i2cWriteOne(bus, MPU_ADDR, MPU_ZA_OFFSET_H, data[4]);
+  i2cWriteOne(bus, MPU_ADDR, MPU_ZA_OFFSET_L, data[5]);
+
+  gyro_bias[0] = gyroOfs.x;
+  gyro_bias[1] = gyroOfs.y;
+  gyro_bias[2] = gyroOfs.z;
+
+  data[0] = (-gyro_bias[0] / 4  >> 8) & 0xFF;
+  data[1] = (-gyro_bias[0] / 4)       & 0xFF;
+  data[2] = (-gyro_bias[1] / 4  >> 8) & 0xFF;
+  data[3] = (-gyro_bias[1] / 4)       & 0xFF;
+  data[4] = (-gyro_bias[2] / 4  >> 8) & 0xFF;
+  data[5] = (-gyro_bias[2] / 4)       & 0xFF;
+
+  // Push gyro biases to hardware registers
+  i2cWriteOne(bus, MPU_ADDR, MPU_XG_OFFSET_H, data[0]);
+  i2cWriteOne(bus, MPU_ADDR, MPU_XG_OFFSET_L, data[1]);
+  i2cWriteOne(bus, MPU_ADDR, MPU_YG_OFFSET_H, data[2]);
+  i2cWriteOne(bus, MPU_ADDR, MPU_YG_OFFSET_L, data[3]);
+  i2cWriteOne(bus, MPU_ADDR, MPU_ZG_OFFSET_H, data[4]);
+  i2cWriteOne(bus, MPU_ADDR, MPU_ZG_OFFSET_L, data[5]);
 } // void imu::initMPU6500()
 
 // Write to AK8963 register through MPU6500
@@ -377,21 +495,38 @@ void imu::initAK8963() {
 
 // Read from gyro&accel of MPU6500
 boolean imu::readMPU6500() {
-  uint8_t tmp = 0;
+  uint16_t tmp = 0;
   int16_t data[7];
+  uint8_t i, count;
 
-  acc.x = acc.y = acc.z = gyro.x = gyro.y = gyro.z = 0.0;
+  acc.x = acc.y = acc.z = gyro.x = gyro.y = gyro.z = filtTemp = 0.0;
 
-  // Read INT status
-  if (i2cRead(bus, MPU_ADDR, MPU_INT_STATUS, &tmp, 1) != 1) {
+  // Read FIFO counter and calculate number of samples
+  if (i2cRead(bus, MPU_ADDR, MPU_FIFO_COUNTH, (uint8_t *) &tmp, 2) != 2) {
     debug(L_NOTICE, (char *) F("Couldn't read from MPU6500!\n"));
     addError(2);
     return false;
   }
-  // Check if there is new data (42Hz data rate)
-  if (tmp & 0x01) {
+  swapBytes((uint8_t *) &tmp);
+  // Fifo is overfull, just reset
+  if (tmp > 128) {
+    i2cWriteOne(bus, MPU_ADDR, MPU_USER_CTRL, MPU_I2C_MST_EN | 0x04);
+    return false;
+  }
+  if ((tmp % 14) != 0) {
+    // Uhm, strange number of bytes in FIFO, skip this cycle
+    return false;
+  }
+  count = tmp / 14;
+
+
+  if (count == 0)
+    return false;
+
+  // Read all samples FIFO 
+  for (i = 0; i < count; i++) { 
     // Read accel, temp and gyro data
-    tmp = i2cRead(bus, MPU_ADDR, MPU_ACCEL_XOUT_H, (uint8_t *) data, 14);
+    tmp = i2cRead(bus, MPU_ADDR, MPU_FIFO_R_W, (uint8_t *) data, 14);
     if (tmp != 14) { 
       debug(L_NOTICE, (char *) F("Couldn't read MPU6500 data (%hd)\n"), tmp);
       addError(2);
@@ -403,16 +538,22 @@ boolean imu::readMPU6500() {
       swapBytes((uint8_t *) &data[i]);
 
     // Calculate acceleration (in G), gyro (radiants/s), temperature (celsius)
-    acc.x = -(float) data[0] / MPU_ARES;
-    acc.y = -(float) data[1] / MPU_ARES;
-    acc.z = (float) data[2] / MPU_ARES;
-    gyro.x = ((float) data[4] * (MPU_GRES * M_PI)) / (32768.0 * 180.0);
-    gyro.y = ((float) data[4] * (MPU_GRES * M_PI)) / (32768.0 * 180.0);
-    gyro.z = ((float) data[4] * (MPU_GRES * M_PI)) / (32768.0 * 180.0);
-    filtTemp = (float) data[3] / 333.87 + 21.0;
-    return true;
-  } else
-    return false;
+    acc.x += (-(float) data[0] / MPU_ARES);
+    acc.y += (-(float) data[1] / MPU_ARES);
+    acc.z += ((float) data[2] / MPU_ARES);
+    gyro.x += (-(float) data[4] * ((MPU_GRES * M_PI) / 180.0));
+    gyro.y += (-(float) data[5] * ((MPU_GRES * M_PI) / 180.0));
+    gyro.z += ((float) data[6] * ((MPU_GRES * M_PI) / 180.0));
+    filtTemp += ((float) data[3] / 333.87 + 21.0);
+  }
+  acc.x /= count;
+  acc.y /= count;
+  acc.z /= count;
+  gyro.x /= count;
+  gyro.y /= count;
+  gyro.z /= count;
+  filtTemp /= count;
+  return true;
 } // boolean imu::readMPU6500()
 
 // Read from magnetometer of AK8963
@@ -482,7 +623,7 @@ void imu::calibMPU6500() {
 
   // Configure device for bias calculation
   i2cWriteOne(bus, MPU_ADDR, MPU_INT_ENABLE, 0x00);   // Disable all interrupts
-  i2cWriteOne(bus, MPU_ADDR, MPU_FIFO_EN, 0x00);      // Disable FIFO
+  i2cWriteOne(bus, MPU_ADDR, MPU_FIFO_EN, 0x00);      // Enable FIFO
   i2cWriteOne(bus, MPU_ADDR, MPU_PWR_MGMT_1, 0x00);   // Turn on internal clock source
   i2cWriteOne(bus, MPU_ADDR, MPU_I2C_MST_CTRL, 0x00); // Disable I2C master
   i2cWriteOne(bus, MPU_ADDR, MPU_USER_CTRL, 0x00);    // Disable FIFO and I2C master modes
@@ -495,7 +636,6 @@ void imu::calibMPU6500() {
   i2cWriteOne(bus, MPU_ADDR, MPU_GYRO_CONFIG, 0x00);  // Set gyro full-scale to 250 degrees per second
   i2cWriteOne(bus, MPU_ADDR, MPU_ACCEL_CONFIG, 0x00); // Set accelerometer full-scale to 2 g, maximum sensitivity
  
-  uint16_t  gyrosensitivity  = 131;   // = 131 LSB/degrees/sec
   uint16_t  accelsensitivity = 16384;  // = 16384 LSB/g
 
   // Configure FIFO to capture accelerometer and gyro data for bias calculation
@@ -548,25 +688,6 @@ void imu::calibMPU6500() {
   else
     accel_bias[2] += (int32_t) accelsensitivity;
    
-  // Construct the gyro biases for push to the hardware gyro bias registers,
-  // which are reset to zero upon device startup
-  // Divide by 4 to get 32.9 LSB per deg/s to conform to expected bias input format
-  // Biases are additive, so change sign on calculated average gyro biases
-  data[0] = (-gyro_bias[0] / 4  >> 8) & 0xFF;
-  data[1] = (-gyro_bias[0] / 4)       & 0xFF;
-  data[2] = (-gyro_bias[1] / 4  >> 8) & 0xFF;
-  data[3] = (-gyro_bias[1] / 4)       & 0xFF;
-  data[4] = (-gyro_bias[2] / 4  >> 8) & 0xFF;
-  data[5] = (-gyro_bias[2] / 4)       & 0xFF;
-  
-  // Push gyro biases to hardware registers
-  i2cWriteOne(bus, MPU_ADDR, MPU_XG_OFFSET_H, data[0]);
-  i2cWriteOne(bus, MPU_ADDR, MPU_XG_OFFSET_L, data[1]);
-  i2cWriteOne(bus, MPU_ADDR, MPU_YG_OFFSET_H, data[2]);
-  i2cWriteOne(bus, MPU_ADDR, MPU_YG_OFFSET_L, data[3]);
-  i2cWriteOne(bus, MPU_ADDR, MPU_ZG_OFFSET_H, data[4]);
-  i2cWriteOne(bus, MPU_ADDR, MPU_ZG_OFFSET_L, data[5]);
-  
   // Construct the accelerometer biases for push to the hardware accelerometer bias registers.
   // These registers contain factory trim values which must be added to the calculated accelerometer
   // biases; on boot up these registers will hold non-zero values. In addition, bit 0 of the lower
@@ -594,41 +715,312 @@ void imu::calibMPU6500() {
   accel_bias_reg[1] -= (accel_bias[1]/8);
   accel_bias_reg[2] -= (accel_bias[2]/8);
   
-  data[0] = (accel_bias_reg[0] >> 8) & 0xFF;
-  data[1] = (accel_bias_reg[0])      & 0xFE;
-  // preserve temperature compensation bit when writing back to accelerometer bias registers
-  data[1] = data[1] | mask_bit[0];
-  data[2] = (accel_bias_reg[1] >> 8) & 0xFF;
-  data[3] = (accel_bias_reg[1])      & 0xFE;
-  // preserve temperature compensation bit when writing back to accelerometer bias registers
-  data[3] = data[3] | mask_bit[1];
-  data[4] = (accel_bias_reg[2] >> 8) & 0xFF;
-  data[5] = (accel_bias_reg[2])      & 0xFE;
-  // preserve temperature compensation bit when writing back to accelerometer bias registers
-  data[5] = data[5] | mask_bit[2];
- 
-  // Push accelerometer biases to hardware registers
-  i2cWriteOne(bus, MPU_ADDR, MPU_XA_OFFSET_H, data[0]);
-  i2cWriteOne(bus, MPU_ADDR, MPU_XA_OFFSET_L, data[1]);
-  i2cWriteOne(bus, MPU_ADDR, MPU_YA_OFFSET_H, data[2]);
-  i2cWriteOne(bus, MPU_ADDR, MPU_YA_OFFSET_L, data[3]);
-  i2cWriteOne(bus, MPU_ADDR, MPU_ZA_OFFSET_H, data[4]);
-  i2cWriteOne(bus, MPU_ADDR, MPU_ZA_OFFSET_L, data[5]);
-
-  // Not needed actually but why not?
+  // Saving calibration values to load into offset registers
   gyroOfs.x = gyro_bias[0];
   gyroOfs.y = gyro_bias[1];
   gyroOfs.z = gyro_bias[2];
   accScale.x = 16384.0;
   accScale.y = 16384.0;
   accScale.z = 16384.0;
-  accOfs.x = accel_bias[0];
-  accOfs.y = accel_bias[1];
-  accOfs.z = accel_bias[2];
+  accOfs.x = (accel_bias_reg[0] & 0xFFFE) | mask_bit[0];
+  accOfs.y = (accel_bias_reg[1] & 0xFFFE) | mask_bit[1];
+  accOfs.z = (accel_bias_reg[2] & 0xFFFE) | mask_bit[2];
   gyroCalibrated = true;
   accelCalibrated = true;
   baroCalibrated = true;
 } // void imu::calibMPU6500()
+#endif
+
+#ifdef IMU_FXOS8700
+// Read data from FXOS8700 accelerometer+magnetometer
+boolean imu::readFXOS8700() {
+  struct __attribute__((packed)) {
+    uint8_t status;
+    int16_t accX;
+    int16_t accY;
+    int16_t accZ;
+  } data;
+  struct __attribute__((packed)) {
+    int16_t magX;
+    int16_t magY;
+    int16_t magZ;
+  } dataMag;
+
+  uint8_t i, res;
+  uint8_t samples = 0;
+
+  // Zero sum values
+  acc.x = acc.y = acc.z = 0.0f;
+  com.x = com.y = com.z = 0.0f;
+
+  // Read accelerometer FIFO
+  while (1) {
+    if ((res = i2cRead(bus, FXOS_ADDR, FXOS_STATUS, (uint8_t *) &data, sizeof(data))) != sizeof(data)) {
+      debug(L_DEBUG, (char *) F("No data read from accelerometer FXOS8700 (%hd)!\n"), res);
+      addError(2);
+      return false;
+    }
+
+    // Check if fifo is fully read
+    if ((data.status & 0x3F) == 0)
+      break;
+
+    // Swap bytes
+    for (i = 0; i < 3; i++)
+      swapBytes(((uint8_t *) &data) + 1 + i * 2);
+  
+    acc.x += (float) data.accX / 16384.0 - accOfs.x;
+    acc.y += (float) data.accY / 16384.0 - accOfs.y;
+    acc.z += (float) data.accZ / 16384.0 - accOfs.z;
+    samples++;
+  }
+
+  // Read magnitometer data
+  if ((res = i2cRead(bus, FXOS_ADDR, FXOS_M_OUT_X_MSB, (uint8_t *) &dataMag, sizeof(dataMag))) != sizeof(dataMag)) {
+    debug(L_DEBUG, (char *) F("No data read from magnetometer FXOS8700 (%hd)!\n"), res);
+    addError(1);
+    return false;
+  }
+  // Swap bytes
+  for (i = 0; i < 3; i++)
+    swapBytes(((uint8_t *) &dataMag) + i * 2);
+  com.x = (dataMag.magX - comOfs.x) / (comScale.x * 0.5);
+  com.y = (dataMag.magY - comOfs.y) / (comScale.y * 0.5);
+  com.z = (dataMag.magZ - comOfs.z) / (comScale.z * 0.5);
+
+  acc.x /= samples;
+  acc.y /= samples;
+  acc.z /= samples;
+  return true;
+} // boolean imu::readFXOS8700()
+
+// Restart auto calibration of FXOS8700 magnetometer
+void imu::restartAutoCalibFXOS8700() {
+  uint8_t i;
+
+  // Reset min/max registers
+  i2cWriteOne(bus, FXOS_ADDR, FXOS_M_CTRL_REG2, 0x24);
+} // void imu::restartAutoCalibFXOS8700()
+
+// read MIN/MAX/OFFSET data from FXOS8700 magnetometer
+void imu::readAutoCalibFXOS8700() {
+  struct {
+    int16_t x;
+    int16_t y;
+    int16_t z;
+  } data;
+  uint8_t i;
+
+  // Maximum data
+  if (i2cRead(bus, FXOS_ADDR, FXOS_MAX_X_MSB, (uint8_t *) &data, sizeof(data)) != sizeof(data)) {
+    debug(L_DEBUG, (char *) F("Can't read maximum from FXOS8700\n"));
+    return;
+  }
+  for (i = 0; i < 3; i++)
+    swapBytes((uint8_t *) &data + (i * 2));
+  comMax.x = data.x;
+  comMax.y = data.y;
+  comMax.z = data.z;
+
+  // Minimum data
+  if (i2cRead(bus, FXOS_ADDR, FXOS_MIN_X_MSB, (uint8_t *) &data, sizeof(data)) != sizeof(data)) {
+    debug(L_DEBUG, (char *) F("Can't read minimum from FXOS8700\n"));
+    return;
+  }
+  for (i = 0; i < 3; i++)
+    swapBytes((uint8_t *) &data + (i * 2));
+  comMin.x = data.x;
+  comMin.y = data.y;
+  comMin.z = data.z;
+
+  comOfs.x = (comMax.x + comMin.x) / 2.0;
+  comOfs.y = (comMax.y + comMin.y) / 2.0;
+  comOfs.z = (comMax.z + comMin.z) / 2.0;
+  comScale.x = comMax.x - comMin.x;
+  comScale.y = comMax.y - comMin.y;
+  comScale.z = comMax.z - comMin.z;
+} // void imu::readAutoCalibFXOS8700()
+
+// Calibrate accelerometer
+void imu::calibFXOS8700() {
+  float sumX, sumY, sumZ;
+  int i, count;
+
+  accOfs.x = accOfs.y = accOfs.z = 0.0;
+  accScale.x = accScale.y = accScale.z = 1.0;
+
+  sumX = sumY = sumZ = 0.0f;
+  count = 0;
+  // Skip first ten reads
+  for (i = 0; i < 10; i++) {
+    readFXOS8700();
+    delay(20);
+  }
+
+  // Read accelerometer 50 times to get acceleration values
+  for (i = 0; i < 50; i++) {
+    if (readFXOS8700()) {
+      sumX += acc.x;
+      sumY += acc.y;
+      sumZ += acc.z;
+      count++;
+    }
+    delay(20);
+  }
+  accOfs.x = sumX / count;
+  accOfs.y = sumY / count;
+  // Suppose earth gravity is 1G
+  accOfs.z = -(1.0 - sumZ / count);
+  accelCalibrated = true;
+  debug(L_DEBUG, (char *) F("FXOS8700 calibration: %.3f %.3f %.3f\n"), accOfs.x, accOfs.y, accOfs.z);
+} // void imu::calibFXOS8700()
+
+// Initialize FXOS8700 accelerometer+magnetometer
+boolean imu::initFXOS8700() {
+  uint8_t tmp = 0;
+
+  // Check if we can communicate with FXOS8700 chip
+  i2cRead(bus, FXOS_ADDR, FXOS_WHOAMI, &tmp, 1);
+  if (tmp != FXOS_ID) {
+    debug(L_WARNING, (char *) F("Wrong or ID from FXOS8700 (%hu)!\n"), tmp);
+    addError(2);
+    return false;
+  }
+  // Reset accelerometer
+  i2cWriteOne(bus, FXOS_ADDR, FXOS_CTRL_REG2, 0x40);
+  delay(1);
+  // Reset magnetometer
+  i2cWriteOne(bus, FXOS_ADDR, FXOS_M_CTRL_REG2, 0x40);
+  delay(1);
+  // Start setting up (standby mode)
+  i2cWriteOne(bus, FXOS_ADDR, FXOS_CTRL_REG1, 0x00);
+  i2cWriteOne(bus, FXOS_ADDR, FXOS_M_CTRL_REG1, 0x00);
+
+  // Magnetometer - oversampling, 200Hz mode, Hybrid mode (half ODR)
+  i2cWriteOne(bus, FXOS_ADDR, FXOS_M_CTRL_REG2, 0x24);
+  i2cWriteOne(bus, FXOS_ADDR, FXOS_M_CTRL_REG3, 0xF0);
+  // Accelerometer - no filter, maximum sensitivity, oversampling, 200Hz, FIFO
+  i2cWriteOne(bus, FXOS_ADDR, FXOS_XYZ_DATA_CFG, 0x00);
+  i2cWriteOne(bus, FXOS_ADDR, FXOS_CTRL_REG2, 0x12);
+  i2cWriteOne(bus, FXOS_ADDR, FXOS_F_SETUP, 0x40);
+  i2cWriteOne(bus, FXOS_ADDR, FXOS_CTRL_REG1, 0x11);
+  i2cWriteOne(bus, FXOS_ADDR, FXOS_M_CTRL_REG1, 0x9F);
+  delay(20);
+  if (!accelCalibrated)
+    calibAccel();
+  return true;
+} // boolean initFXOS8700()
+#endif
+
+#ifdef IMU_FXAS21002
+// Read data from FXAS21002 gyroscope
+boolean imu::readFXAS21002() {
+  struct __attribute__((packed)) {
+    uint8_t status;
+    int16_t gyroX;
+    int16_t gyroY;
+    int16_t gyroZ;
+  } data;
+  int8_t tmp;
+  uint8_t samples = 0;
+
+  // Clear previous measurements to be sure nothing bad happens
+  gyro.x = gyro.y = gyro.z = 0.0;
+
+  while (1) {
+    // Read data
+    if (i2cRead(bus, FXAS_ADDR, FXAS_STATUS, (uint8_t *) &data, sizeof(data)) != sizeof(data)) {
+      debug(L_DEBUG, (char *) F("Can't read from FXAS21002\n"));
+      addError(3);
+     return false;
+    }
+    if ((data.status & 0x3F) == 0)
+      break;
+
+    // Swap bytes
+    swapBytes((uint8_t *) &data + 1);
+    swapBytes((uint8_t *) &data + 3);
+    swapBytes((uint8_t *) &data + 5);
+
+    gyro.x += (float) data.gyroX * ((FXAS_GRES * M_PI) / 180.0f);
+    gyro.y += (float) data.gyroY * ((FXAS_GRES * M_PI) / 180.0f);
+    gyro.z += (float) data.gyroZ * ((FXAS_GRES * M_PI) / 180.0f);
+    if (gyroCalibrated) {
+      gyro.x += gyroOfs.x;
+      gyro.y += gyroOfs.y;
+      gyro.z += gyroOfs.z;
+    }
+    samples++;
+  }
+  gyro.x /= samples;
+  gyro.y /= samples;
+  gyro.z /= samples;
+
+  // Read temperature
+  i2cRead(bus,FXAS_ADDR, FXAS_TEMP, (uint8_t *) &tmp, 1);
+  filtTemp = tmp;
+  return true;
+} // boolean imu::readFXAS21002()
+
+// Initialize FXAS21002 gyroscope
+boolean imu::initFXAS21002() {
+  uint8_t tmp;
+  
+  // Check if we can communicate with FXAS21002 chip
+  i2cRead(bus, FXAS_ADDR, FXAS_WHOAMI, &tmp, 1);
+  if (tmp != FXAS_ID) {
+    debug(L_WARNING, (char *) F("Wrong or can't read ID from FXAS21002 (%hu)!\n"), tmp);
+    addError(3);
+    return false;
+  }
+
+  // Reset
+  i2cWriteOne(bus, FXAS_ADDR, FXAS_CTRL_REG1, 0x40);
+  delay(1);
+
+  // Configure 2000dps without analog gain, 100Hz ODR, circular buffer FIFO
+  i2cWriteOne(bus, FXAS_ADDR, FXAS_CTRL_REG0, 0x00);
+  i2cWriteOne(bus, FXAS_ADDR, FXAS_F_SETUP, 0x40);
+  i2cWriteOne(bus, FXAS_ADDR, FXAS_CTRL_REG1, 0x0E);
+  delay(20);
+  if (!gyroCalibrated)
+    calibFXAS21002();
+  return true;
+} // boolean imu::initFXAS21002()
+
+// Calibrate gyroscope
+void imu::calibFXAS21002() {
+  float sumX, sumY, sumZ;
+  int i, count;
+
+  gyroOfs.x = gyroOfs.y = gyroOfs.z = 0.0;
+  gyroCalibrated = false;
+
+  sumX = sumY = sumZ = 0.0f;
+  count = 0;
+  // Skip first ten reads
+  for (i = 0; i < 10; i++) {
+    readFXAS21002();
+    delay(20);
+  }
+  
+  // Read gyroscope 50 time
+  for (i = 0; i < 50; i++) {
+    if (readFXAS21002()) {
+      sumX += gyro.x;
+      sumY += gyro.y;
+      sumZ += gyro.z;
+      count++;
+    }
+    delay(20);
+  }
+  gyroOfs.x = -sumX / count;
+  gyroOfs.y = -sumY / count;
+  gyroOfs.z = -sumZ / count;
+  debug(L_DEBUG, (char *) F("FXAS21002 calibration: %.3f %.3f %.3f\n"), gyroOfs.x, gyroOfs.y, gyroOfs.z);
+
+  gyroCalibrated = true;
+} // void imu::calibFXAS21002()
 #endif
 
 #ifdef IMU_GY80
@@ -799,7 +1191,7 @@ void imu::initHMC5883L() {
   comTempInit = filtTemp;
   selfHMC5883L(false);
   comSelfTest = 0;
-  compassNeedComp = true;
+  compassNeedComp = false;
 
   // We don't know values for temperature scaling yet, so
   // assume zero compensation for current temperature
@@ -910,15 +1302,19 @@ void imu::readL3G4200D() {
   uint8_t fifoReg = 0;
   uint8_t count;
 
-  i2cRead(bus, L3G4200D, 0x2F, &fifoReg, sizeof(fifoReg));
-  count = (fifoReg & 0x1F) + 1;
+  gyro.x = gyro.y = gyro.z = 0;
 
-  memset(gyroFifo, 0, sizeof(gyroFifo[0]) * 32);
+  // Check number of unread samples in FIFO buffer
+  i2cRead(bus, L3G4200D, 0x2F, &fifoReg, sizeof(fifoReg));
+  count = (fifoReg & 0x1F);
+  if (count == 0)
+    return;
+  if (count > (sizeof(gyroFifo) / sizeof(gyroFifo[0])))
+    count = sizeof(gyroFifo) / sizeof(gyroFifo[0]);
+
+  memset(gyroFifo, 0, sizeof(gyroFifo));
   i2cRead(bus, L3G4200D, 0xA8, (uint8_t *) gyroFifo, sizeof(gyroFifo[0]) * count);
 
-  gyro.x = gyro.y = gyro.z = 0;
-  if (!gyroCalibrated)
-    count = 1;
   for (uint8_t i = 0; i < count; i++) {
       gyro.x += (int16_t) (((uint16_t) gyroFifo[i].xh) << 8 | gyroFifo[i].xl);
       gyro.y += (int16_t) (((uint16_t) gyroFifo[i].yh) << 8 | gyroFifo[i].yl);
@@ -929,10 +1325,13 @@ void imu::readL3G4200D() {
         gyro.z -= gyroOfs.z;
       }
   }
+  gyro.x /= count;
+  gyro.y /= count;
+  gyro.z /= count;
   if (gyroCalibrated) {
-    gyro.x *= 0.07 * M_PI / 180.0;  // convert to radiant per second
-    gyro.y *= 0.07 * M_PI / 180.0;
-    gyro.z *= 0.07 * M_PI / 180.0;
+    gyro.x *= L3G4200D_GRES * M_PI / 180.0;  // convert to radiant per second
+    gyro.y *= L3G4200D_GRES * M_PI / 180.0;
+    gyro.z *= L3G4200D_GRES * M_PI / 180.0;
   }
 } // void imu::readL3G4200D()
 
@@ -1003,6 +1402,9 @@ boolean imu::initL3G4200D() {
     addError(3);
     errorStatus = 1;
   }
+  // Activate FIFO, stream mode
+  i2cWriteOne(bus, L3G4200D, 0x24, 0x40);
+  i2cWriteOne(bus, L3G4200D, 0x2E, 0x40);
 
   if (!gyroCalibrated) {
     delay(250);
@@ -1042,10 +1444,24 @@ _status imu::init(nvmem *saveMem) {
     loadCalib();
   }
 
+#ifdef MADGWICK_FILTER
+  madgwickInit();
+#endif
+
+#ifdef KALMAN_FILTER
+  kalmanX.setQangle(KALMAN_Q_ANGLE);
+  kalmanX.setQbias(KALMAN_Q_BIAS);
+  kalmanX.setRmeasure(KALMAN_R_MEASURE);
+  kalmanX.setAngle(0);
+  kalmanY.setQangle(KALMAN_Q_ANGLE);
+  kalmanY.setQbias(KALMAN_Q_BIAS);
+  kalmanY.setRmeasure(KALMAN_R_MEASURE);
+  kalmanY.setAngle(0);
+#endif
+
   // Re-init i2c bus
   i2cInit(bus, 400000);
 
-  // XXX
   // Don't have barometer calibration yet
   baroCalibrated = true;
 
@@ -1078,6 +1494,14 @@ _status imu::init(nvmem *saveMem) {
   initAK8963();
   imuLocked = false;
   #endif
+  #ifdef IMU_FXOS8700
+  if (!initFXOS8700())
+    return _status::ERR;
+  #endif
+  #ifdef IMU_FXAS21002
+  if (!initFXAS21002())
+    return _status::ERR;
+  #endif
 
 #ifdef DEBUG_IMU_CONSTANT
   if (!compassCalibrated) {
@@ -1105,50 +1529,146 @@ _status imu::init(nvmem *saveMem) {
   return _status::NOERR;
 } // _status imu::init(nvmem *saveMem)
 
+#ifdef MADGWICK_FILTER
+// Initialize filter
+void imu::madgwickInit() {
+  invSampleFreq = 1.0f / MADGWICK_RATE;
+  q0 = 1.0f;
+  q1 = 0.0f;
+  q2 = 0.0f;
+  q3 = 0.0f;
+} // void imu::madgwickInit()
+
+float imu::invSqrt(float x) {
+  /* close-to-optimal  method with low cost from
+     http://pizer.wordpress.com/2008/10/12/fast-inverse-square-root */
+  uint32_t i = 0x5F1F1412 - (*(uint32_t*)&x >> 1);
+  float tmp = *(float*)&i;
+  return tmp * (1.69000231f - 0.714158168f * x * tmp * tmp);
+} // float imu::invSqrt(float x)
+
+/* float imu::invSqrt(float x) {
+*  float halfx = 0.5f * x;
+*  float y = x;
+*  long i = *(long*)&y;
+*
+*  i = 0x5f3759df - (i>>1);
+*  y = *(float*)&i;
+*  y = y * (1.5f - (halfx * y * y));
+*  y = y * (1.5f - (halfx * y * y));
+*  return y;
+* } // float imu::invSqrt(float x) */
+
+void imu::madgwickUpdate() {
+  float recipNorm;
+  float s0, s1, s2, s3;
+  float qDot1, qDot2, qDot3, qDot4;
+  float hx, hy;
+  float _2q0mx, _2q0my, _2q0mz, _2q1mx, _2bx, _2bz, _4bx, _4bz, _2q0, _2q1;
+  float _2q2, _2q3, _2q0q2, _2q2q3, q0q0, q0q1, q0q2, q0q3, q1q1, q1q2;
+  float q1q3, q2q2, q2q3, q3q3;
+
+  // Rate of change of quaternion from gyroscope
+  qDot1 = 0.5f * (-q1 * gyro.x - q2 * gyro.y - q3 * gyro.z);
+  qDot2 = 0.5f * (q0 * gyro.x + q2 * gyro.z - q3 * gyro.y);
+  qDot3 = 0.5f * (q0 * gyro.y - q1 * gyro.z + q3 * gyro.x);
+  qDot4 = 0.5f * (q0 * gyro.z + q1 * gyro.y - q2 * gyro.x);
+
+  // Compute feedback only if accelerometer measurement valid (avoids NaN in accelerometer normalisation)
+  if(!((acc.x == 0.0f) && (acc.y == 0.0f) && (acc.z == 0.0f))) {
+
+    // Normalise accelerometer measurement
+    recipNorm = invSqrt(acc.x * acc.x + acc.y * acc.y + acc.z * acc.z);
+    acc.x *= recipNorm;
+    acc.y *= recipNorm;
+    acc.z *= recipNorm;
+
+    // Normalise magnetometer measurement
+    recipNorm = invSqrt(com.x * com.x + com.y * com.y + com.z * com.z);
+    com.x *= recipNorm;
+    com.y *= recipNorm;
+    com.z *= recipNorm;
+
+    // Auxiliary variables to avoid repeated arithmetic
+    _2q0mx = 2.0f * q0 * com.x;
+    _2q0my = 2.0f * q0 * com.y;
+    _2q0mz = 2.0f * q0 * com.z;
+    _2q1mx = 2.0f * q1 * com.x;
+    _2q0 = 2.0f * q0;
+    _2q1 = 2.0f * q1;
+    _2q2 = 2.0f * q2;
+    _2q3 = 2.0f * q3;
+    _2q0q2 = 2.0f * q0 * q2;
+    _2q2q3 = 2.0f * q2 * q3;
+    q0q0 = q0 * q0;
+    q0q1 = q0 * q1;
+    q0q2 = q0 * q2;
+    q0q3 = q0 * q3;
+    q1q1 = q1 * q1;
+    q1q2 = q1 * q2;
+    q1q3 = q1 * q3;
+    q2q2 = q2 * q2;
+    q2q3 = q2 * q3;
+    q3q3 = q3 * q3;
+
+    // Reference direction of Earth's magnetic field
+    hx = com.x * q0q0 - _2q0my * q3 + _2q0mz * q2 + com.x * q1q1 + _2q1 * com.y * q2 + _2q1 * com.z * q3 - com.x * q2q2 - com.x * q3q3;
+    hy = _2q0mx * q3 + com.y * q0q0 - _2q0mz * q1 + _2q1mx * q2 - com.y * q1q1 + com.y * q2q2 + _2q2 * com.z * q3 - com.y * q3q3;
+    _2bx = sqrtf(hx * hx + hy * hy);
+    _2bz = -_2q0mx * q2 + _2q0my * q1 + com.z * q0q0 + _2q1mx * q3 - com.z * q1q1 + _2q2 * com.y * q3 - com.z * q2q2 + com.z * q3q3;
+    _4bx = 2.0f * _2bx;
+    _4bz = 2.0f * _2bz;
+
+    // Gradient decent algorithm corrective step
+    s0 = -_2q2 * (2.0f * q1q3 - _2q0q2 - acc.x) + _2q1 * (2.0f * q0q1 + _2q2q3 - acc.y) - _2bz * q2 * (_2bx * (0.5f - q2q2 - q3q3) + _2bz * (q1q3 - q0q2) - com.x) + (-_2bx * q3 + _2bz * q1) * (_2bx * (q1q2 - q0q3) + _2bz * (q0q1 + q2q3) - com.y) + _2bx * q2 * (_2bx * (q0q2 + q1q3) + _2bz * (0.5f - q1q1 - q2q2) - com.z);
+    s1 = _2q3 * (2.0f * q1q3 - _2q0q2 - acc.x) + _2q0 * (2.0f * q0q1 + _2q2q3 - acc.y) - 4.0f * q1 * (1 - 2.0f * q1q1 - 2.0f * q2q2 - acc.z) + _2bz * q3 * (_2bx * (0.5f - q2q2 - q3q3) + _2bz * (q1q3 - q0q2) - com.x) + (_2bx * q2 + _2bz * q0) * (_2bx * (q1q2 - q0q3) + _2bz * (q0q1 + q2q3) - com.y) + (_2bx * q3 - _4bz * q1) * (_2bx * (q0q2 + q1q3) + _2bz * (0.5f - q1q1 - q2q2) - com.z);
+    s2 = -_2q0 * (2.0f * q1q3 - _2q0q2 - acc.x) + _2q3 * (2.0f * q0q1 + _2q2q3 - acc.y) - 4.0f * q2 * (1 - 2.0f * q1q1 - 2.0f * q2q2 - acc.z) + (-_4bx * q2 - _2bz * q0) * (_2bx * (0.5f - q2q2 - q3q3) + _2bz * (q1q3 - q0q2) - com.x) + (_2bx * q1 + _2bz * q3) * (_2bx * (q1q2 - q0q3) + _2bz * (q0q1 + q2q3) - com.y) + (_2bx * q0 - _4bz * q2) * (_2bx * (q0q2 + q1q3) + _2bz * (0.5f - q1q1 - q2q2) - com.z);
+    s3 = _2q1 * (2.0f * q1q3 - _2q0q2 - acc.x) + _2q2 * (2.0f * q0q1 + _2q2q3 - acc.y) + (-_4bx * q3 + _2bz * q1) * (_2bx * (0.5f - q2q2 - q3q3) + _2bz * (q1q3 - q0q2) - com.x) + (-_2bx * q0 + _2bz * q2) * (_2bx * (q1q2 - q0q3) + _2bz * (q0q1 + q2q3) - com.y) + _2bx * q1 * (_2bx * (q0q2 + q1q3) + _2bz * (0.5f - q1q1 - q2q2) - com.z);
+    recipNorm = invSqrt(s0 * s0 + s1 * s1 + s2 * s2 + s3 * s3); // normalise step magnitude
+    s0 *= recipNorm;
+    s1 *= recipNorm;
+    s2 *= recipNorm;
+    s3 *= recipNorm;
+
+    // Apply feedback step
+    qDot1 -= MADGWICK_BETA * s0;
+    qDot2 -= MADGWICK_BETA * s1;
+    qDot3 -= MADGWICK_BETA * s2;
+    qDot4 -= MADGWICK_BETA * s3;
+  }
+
+  // Integrate rate of change of quaternion to yield quaternion
+  q0 += qDot1 * invSampleFreq;
+  q1 += qDot2 * invSampleFreq;
+  q2 += qDot3 * invSampleFreq;
+  q3 += qDot4 * invSampleFreq;
+
+  // Normalise quaternion
+  recipNorm = invSqrt(q0 * q0 + q1 * q1 + q2 * q2 + q3 * q3);
+  q0 *= recipNorm;
+  q1 *= recipNorm;
+  q2 *= recipNorm;
+  q3 *= recipNorm;
+
+  accRoll = atan2f(q0*q1 + q2*q3, 0.5f - q1*q1 - q2*q2);
+  accPitch = asinf(-2.0f * (q1*q3 - q0*q2));
+  // We use negative sign for WEST, not EAST
+  comYaw = -atan2f(q1*q2 + q0*q3, 0.5f - q2*q2 - q3*q3);
+} // void imu::madgwickUpdate()
+
+#else
 // Complementary filter
-float imu::complementary(float newAngle, float newRate, int loopTime, float angle) {
+float imu::complementary(float newAngle, float newRate, float loopTime, float angle) {
   float k = 5;
-  float dtc2 = float(loopTime) / 1000.0;
   float x1 = (newAngle - angle) * k * k;
-  float y1 = dtc2 * x1;
+  float y1 = loopTime * x1;
   float x2 = y1 + (newAngle - angle) * 2 * k + newRate;
 
-  angle = dtc2 * x2 + angle;
+  angle = loopTime * x2 + angle;
   return angle;
-} // float imu::complementary(float newAngle, float newRate, int loopTime, float angle)
+} // float imu::complementary(float newAngle, float newRate, float loopTime, float angle)
 
-// Kalman filter
-float imu::kalman(float newAngle, float newRate, int loopTime, float x_angle) {
-  float Q_angle =  0.01;
-  float Q_gyro = 0.0003;
-  float R_angle = 0.01;
-
-  float x_bias = 0;
-  float P_00 = 0, P_01 = 0, P_10 = 0, P_11 = 0;
-  float y, S;
-  float K_0, K_1;
-
-  float dt = float(loopTime)/1000;
-  x_angle += dt * (newRate - x_bias);
-  P_00 += -dt * (P_10 + P_01) + Q_angle * dt;
-  P_01 += -dt * P_11;
-  P_10 += -dt * P_11;
-  P_11 += Q_gyro * dt;
-
-  y = newAngle - x_angle;
-  S = P_00 + R_angle;
-  K_0 = P_00 / S;
-  K_1 = P_10 / S;
-
-  x_angle += K_0 * y;
-  x_bias += K_1 * y;
-  P_00 -= K_0 * P_00;
-  P_01 -= K_0 * P_01;
-  P_10 -= K_1 * P_00;
-  P_11 -= K_1 * P_01;
-
-  return x_angle;
-} // float imu::Kalman(float newAngle, float newRate, int loopTime, float x_angle)
+#endif
 
 // scale to -M_PI .. M_PI range
 float imu::scalePI(float v) {
@@ -1259,13 +1779,22 @@ int16_t imu::scaleDegree(int16_t angleDegree) {
 _status imu::startCompassCalib() {
   comMin.x = comMin.y = comMin.z = 999999;
   comMax.x = comMax.y = comMax.z = -999999;
+#ifdef IMU_FXOS8700
+  restartAutoCalibFXOS8700();
+#endif
   return _status::NOERR;
 } // _status imu::startCompassCalib()
 
 _status imu::stopCompassCalib() {
-  float xrange = comMax.x - comMin.x;
-  float yrange = comMax.y - comMin.y;
-  float zrange = comMax.z - comMin.z;
+  float xrange, yrange, zrange;
+
+#ifdef IMU_FXOS8700
+  readAutoCalibFXOS8700();
+#endif
+
+  xrange = comMax.x - comMin.x;
+  yrange = comMax.y - comMin.y;
+  zrange = comMax.z - comMin.z;
 
   comOfs.x = xrange / 2 + comMin.x;
   comOfs.y = yrange / 2 + comMin.y;

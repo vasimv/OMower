@@ -15,11 +15,11 @@
 
 // Size of nvmem available for writing/reading, for internal flash must be less than 2048 (one                
 // flash's page size), should be (32 * 2**N)                                                                  
-#define NVMEM_SIZE 512                                                                                        
-                                                                                                              
-// Using internal program flash as NVMEM                                                                      
-#define NVMEM_INTERNAL_FLASH                                                                                  
-                                                                                                              
+#define NVMEM_SIZE 512
+
+// Using internal program flash as NVMEM
+#define NVMEM_INTERNAL_FLASH
+
 // How much blocks (NVMEM_SIZE bytes) of the internal flash will be used as NVMEM                             
 // (they will be written sequentially to prevent wear-out)                                                    
 #define NVMEM_BLOCKS 32                 
@@ -33,6 +33,24 @@
 #define CH_PWM_FAN PWML5_PC22
 #define CH_PWM_BOOST PWML6_PC23
 #define CH_PWM_CC PWML7_PC24
+
+#define BUMPERS_NUM 0
+
+// GY-80 module as IMU
+// #define IMU_GY80
+
+// MPU-9250 (MPU6500+AK8963 on signle chip) as IMU
+#define IMU_MPU9250
+
+// FXOS8700+FXAS21002 board FRDM-STBC-AGM01
+// #define IMU_FXOS8700
+// #define IMU_FXAS21002
+
+// Use madgwick filter for IMU data fusion (if disabled, it'll use complementary+kalman)
+#define MADGWICK_FILTER 
+
+// Use Kalman filter for IMU data
+// #define KALMAN_FILTER
 
 // Disable adc channel 7 as it used as REF for IHM12A1
 #define NO_ADC_CHANNEL7

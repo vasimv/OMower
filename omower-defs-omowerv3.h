@@ -45,6 +45,16 @@
 // MPU-9250 (MPU6500+AK8963 on signle chip) as IMU
 // #define IMU_MPU9250
 
+// FXOS8700+FXAS21002 board FRDM-STBC-AGM01
+// #define IMU_FXOS8700
+// #define IMU_FXAS21002
+
+// Use madgwick filter for IMU data fusion (if disabled, it'll use complementary+kalman)
+#define MADGWICK_FILTER 
+
+// Use Kalman filter for IMU data
+// #define KALMAN_FILTER
+
 // Invert bumper's signal (LOW - obstacle)
 #define BUMPERS_INVERT
 

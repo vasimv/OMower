@@ -9,6 +9,16 @@
 #include <omower-nvmem.h>
 #include <Arduino.h>
 
+// Use madgwick filter for IMU data fusion (if disabled, it'll use complementary+kalman)
+#define MADGWICK_FILTER 
+
+// Use Kalman filter for IMU data
+// #define KALMAN_FILTER
+
+#ifdef KALMAN_FILTER
+#include <Kalman.h>
+#endif
+
 // IMU sensor (compass, accelerometer, gyro, baro)
 class imu : public navThing {
 public:
@@ -121,7 +131,7 @@ private:
     uint8_t yh;
     uint8_t zl;
     uint8_t zh;
-  } gyroFifo[32];
+  } gyroFifo[4];
 #endif
 
   // Gyro offsets
@@ -184,11 +194,29 @@ private:
   // Error status 0 - no errors, 1 - hardware error, 2 - soft error
   uint8_t errorStatus;
 
-  // Kalman filter
-  float kalman(float newAngle, float newRate, int looptime, float x_angle);
+#ifdef KALMAN_FILTER
+  Kalman kalmanX, kalmanY;
+#endif
+
+#ifdef MADGWICK_FILTER
+  // Filter stuff
+  float q0;
+  float q1;
+  float q2;
+  float q3;
+  float invSampleFreq;
+
+  float invSqrt(float x);
+
+  // Init madgwick filter
+  void madgwickInit();
+
+  // Update madgwick filter
+  void madgwickUpdate();
+#endif
 
   // Complementary filter
-  float complementary(float newAngle, float newRate, int looptime, float angle);
+  float complementary(float newAngle, float newRate, float looptime, float angle);
 
 #ifdef IMU_GY80
   // Reading temperature (instead of pressure) at next interrupt
@@ -256,6 +284,34 @@ private:
   // Calibration stuff for MPU6500
   void calibMPU6500();
 #endif // IMU_MPU9250
+
+
+#ifdef IMU_FXOS8700
+  // Check and init FXOS8700
+  boolean initFXOS8700();
+
+  // Read accelerometer and magnetometer sensors
+  boolean readFXOS8700();
+
+  // Restart auto calibration of FXOS8700 magnetometer (it has internal max/min registers)
+  void restartAutoCalibFXOS8700();
+
+  // read MIN/MAX/OFFSET data from FXOS8700 magnetometer
+  void readAutoCalibFXOS8700();
+
+  // Calibrate accelerometer
+  void calibFXOS8700();
+#endif
+#ifdef IMU_FXAS21002
+  // Check and init FXAS21002
+  boolean initFXAS21002();
+
+  // Read gyroscope sensor
+  boolean readFXAS21002();
+
+  // Calibrate gyroscope
+  void calibFXAS21002();
+#endif
 
   // Swap two bytes
   void swapBytes(uint8_t *p);
