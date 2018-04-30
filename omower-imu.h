@@ -9,12 +9,6 @@
 #include <omower-nvmem.h>
 #include <Arduino.h>
 
-// Use madgwick filter for IMU data fusion (if disabled, it'll use complementary+kalman)
-#define MADGWICK_FILTER 
-
-// Use Kalman filter for IMU data
-// #define KALMAN_FILTER
-
 #ifdef KALMAN_FILTER
 #include <Kalman.h>
 #endif
