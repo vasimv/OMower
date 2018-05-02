@@ -253,7 +253,13 @@ void imu::poll50() {
 // Calibrate accelerometer
 _status imu::calibAccel() {
 #ifdef IMU_GY80
-  return calibAccelGY80();
+  _status res;
+
+  imuLocked = true;
+  delay(5);
+  res = calibAccelGY80();
+  imuLocked = false;
+  return res;
 #endif
 #ifdef IMU_MPU9250
   boolean checked;
@@ -730,9 +736,15 @@ void imu::calibMPU6500() {
   accScale.x = 16384.0f;
   accScale.y = 16384.0f;
   accScale.z = 16384.0f;
+#ifdef NO_CALIB_ACCEL
+  accOfs.x = mask_bit[0];
+  accOfs.y = mask_bit[1];
+  accOfs.z = mask_bit[2];
+#else
   accOfs.x = (accel_bias_reg[0] & 0xFFFE) | mask_bit[0];
   accOfs.y = (accel_bias_reg[1] & 0xFFFE) | mask_bit[1];
   accOfs.z = (accel_bias_reg[2] & 0xFFFE) | mask_bit[2];
+#endif
   gyroCalibrated = true;
   accelCalibrated = true;
   baroCalibrated = true;
@@ -1069,7 +1081,15 @@ void imu::initADXL345B() {
 _status imu::calibAccelGY80() {
   float sumX, sumY, sumZ;
 
+#ifdef NO_CALIB_ACCEL
+  accOfs.x = accOfs.y = accOfs.z = 0.0f;
+  accScale.x = accScale.y = accScale.z = 250.0f;
+  accelCalibrated = true;
+  return _status::NOERR;
+#endif
+
   delay(250);
+  sumX = sumY = sumZ = 0.0f;
   for (uint16_t i = 0; i < 50; i++) {
     readADXL345B();
     sumX += acc.x;
