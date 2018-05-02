@@ -8,6 +8,7 @@
 #include <omower-defs.h>
 #include <omower-nvmem.h>
 #include <Arduino.h>
+#include <math.h>
 
 #ifdef KALMAN_FILTER
 #include <Kalman.h>
@@ -96,18 +97,18 @@ private:
   uint32_t nvmemAddr;
 
   // Calibration statuses
-  boolean gyroCalibrated;
-  boolean accelCalibrated;
-  boolean compassCalibrated;
-  boolean baroCalibrated;
-  boolean imuLocked;
+  volatile boolean gyroCalibrated;
+  volatile boolean accelCalibrated;
+  volatile boolean compassCalibrated;
+  volatile boolean baroCalibrated;
+  volatile boolean imuLocked;
 
   // Compass need temperature compensation
   boolean compassNeedComp;
   uint8_t comSelfTest;
 
   // Issue stop command when reached set course
-  boolean stopFinished;
+  volatile boolean stopFinished;
 
   // float type vector
   struct _vec_float_t {
@@ -129,64 +130,56 @@ private:
 #endif
 
   // Gyro offsets
-  struct _vec_float_t gyroOfs;
+  volatile struct _vec_float_t gyroOfs;
 
   // Compass offset
-  struct _vec_float_t comOfs;
+  volatile struct _vec_float_t comOfs;
 
   // Compass scale
-  struct _vec_float_t comScale;
+  volatile struct _vec_float_t comScale;
 
   // Compass min/max for calibration
-  struct _vec_float_t comMax;
-  struct _vec_float_t comMin;
+  volatile struct _vec_float_t comMax;
+  volatile struct _vec_float_t comMin;
 
   // Compass self-test values at init
-  struct _vec_float_t comInit;
-  float comTempInit;
+  volatile struct _vec_float_t comInit;
+  volatile float comTempInit;
 
   // Compass last self-test values
-  struct _vec_float_t comRaw;
-  float comTempSelf;
+  volatile struct _vec_float_t comRaw;
+  volatile float comTempSelf;
 
   // Current compass temperature offset
   // (calculated based on self-test values)
-  struct _vec_float_t comTempScale;
+  volatile struct _vec_float_t comTempScale;
 
   // Compass tilt
   struct _vec_float_t comTilt;
 
-  struct _vec_float_t acc;
+  volatile struct _vec_float_t acc;
 
   // Accelerometer scale
-  struct _vec_float_t accScale;
+  volatile struct _vec_float_t accScale;
 
   // Accelerometer offset
-  struct _vec_float_t accOfs;
+  volatile struct _vec_float_t accOfs;
 
   // Sensors data
-  struct _vec_float_t com;
-  struct _vec_float_t gyro;
-
-  // Baro/temperature sensor calibration values
-  struct {
-    int16_t ac1, ac2, ac3;
-    uint16_t ac4, ac5, ac6;
-    int16_t b1, b2;
-    int16_t mb, mc, md;
-  } bmpCalib;
+  volatile struct _vec_float_t com;
+  volatile struct _vec_float_t gyro;
 
   // Calculated values in -M_PI..M_PI range
-  float accPitch, accRoll, comYaw, filtPitch, filtRoll, filtYaw, gyroNoise, filtTemp, filtPress;
+  volatile float accPitch, accRoll, comYaw, filtPitch, filtRoll, filtYaw, gyroNoise, filtTemp, filtPress;
 
   // Course set
-  float courseCur;
+  volatile float courseCur;
 
   // Last reading time
   unsigned long lastTime;
 
   // Error status 0 - no errors, 1 - hardware error, 2 - soft error
-  uint8_t errorStatus;
+  volatile uint8_t errorStatus;
 
 #ifdef KALMAN_FILTER
   Kalman kalmanX, kalmanY;
@@ -194,11 +187,11 @@ private:
 
 #ifdef MADGWICK_FILTER
   // Filter stuff
-  float q0;
-  float q1;
-  float q2;
-  float q3;
-  float invSampleFreq;
+  volatile float q0;
+  volatile float q1;
+  volatile float q2;
+  volatile float q3;
+  volatile float invSampleFreq;
 
   float invSqrt(float x);
 
@@ -213,6 +206,14 @@ private:
   float complementary(float newAngle, float newRate, float looptime, float angle);
 
 #ifdef IMU_GY80
+  // Baro/temperature sensor calibration values
+  struct {
+    int16_t ac1, ac2, ac3;
+    uint16_t ac4, ac5, ac6;
+    int16_t b1, b2;
+    int16_t mb, mc, md;
+  } bmpCalib;
+
   // Reading temperature (instead of pressure) at next interrupt
   boolean readingTemperature;
 
