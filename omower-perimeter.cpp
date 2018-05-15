@@ -2,6 +2,9 @@
 // Based on ardumower code (https://github.com/Ardumower/ardumower)
 // $Id$
 
+// We need maximum speed on this one
+#pragma GCC optimize ("O3") 
+
 #include <omower-defs.h>
 #include <omower-perimeter.h>
 #include <due-adc-scan.h>
