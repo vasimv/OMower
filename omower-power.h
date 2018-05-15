@@ -84,7 +84,17 @@ public:
   numThing numThings();
 
   void poll50();
+
+  // Disable power save mode
+  _status enableThings();
+
+  // Enable power save mode
+  _status disableThings();
+  
 private:
+  // Flag of power save mode
+  boolean powerSave;
+
   // Flags of internal regulators enabled
   boolean enableMain;
   boolean enableSolar;

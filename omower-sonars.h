@@ -26,6 +26,10 @@ public:
   _locationThings locThings();
   numThing numThings();
 
+  // Disable/enable sonars (to save power)
+  _status enableThings();
+  _status disableThings();
+
   void poll20();
 
 private:
@@ -37,6 +41,9 @@ private:
 
   // Filtered distance of all sonars
   uint16_t sonarFilt[SONARS_NUM];
+
+  // Enable sonars pings
+  boolean enableSonars;
 
   // Sonars pairs pins
   const uint8_t sonarTrigs[6] = {PIN_SONAR_TRIG1, PIN_SONAR_TRIG2,

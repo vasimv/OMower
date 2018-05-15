@@ -34,7 +34,7 @@ void power::setSolar(int duty) {
   lastSolarDuty = duty;
   if (duty == 0)
     increaseSolar = true;
-  debug(L_DEBUG, (char *) F("P: solarPwm: %d\n"), duty);
+  debug(L_DEBUG, (char *) F("P: s %d\n"), duty);
 } // void power::setSolar(int duty)
 
 // Set main charger duty output
@@ -49,7 +49,7 @@ void power::setMain(int duty) {
   lastMainDuty = duty;
   if (duty == 0)
     increaseMain = true;
-  debug(L_DEBUG, (char *) F("P: chargePwm: %d\n"), duty);
+  debug(L_DEBUG, (char *) F("P: c %d\n"), duty);
 } // void power::setMain(int duty)
 
 // Reads all voltages, updates PWM on boost and charge
@@ -154,6 +154,16 @@ void power::poll50() {
     } else 
       setMain(lastMainDuty);
   }
+
+#ifndef NO_FAN_CONTROL
+  // Check power save mode and disable/enable fan when no charge
+  if (powerSave) {
+    if (canUseSolar || canUseMain)
+      pwmPow_fan.set_duty(FAN_PWM_PERIOD / 2);
+    else
+      pwmPow_fan.set_duty(0);
+  }
+#endif
 } // void power::poll50()
 
 float readPowerLeft(numThing n) {
@@ -179,6 +189,7 @@ power::power() {
   maxBatteryChargeStart = 14.2;
   minBatteryVoltage = 9.0;
   maxChargeCurrent = 0.5;
+  powerSave = false;
 } // power::power()
 
 // Enable charging from main charge port
@@ -204,6 +215,7 @@ _hwstatus power::begin() {
 #endif
   pinMode(PIN_SHUTDOWN, OUTPUT);
   digitalWrite(PIN_SHUTDOWN, LOW);
+  powerSave = false;
 } // _hwstatus power::begin()
 
 // Emergency shutdown
@@ -279,3 +291,16 @@ uint16_t currentPow::readRawCurrent(numThing n) {
   *prevValue = value;
   return value;
 } // uint16_t currentPow::readRawCurrent(numThing n)
+
+// Disable power save mode
+_status power::enableThings() {
+  powerSave = false;
+  return _status::NOERR;
+} // _status power::enableThings()
+
+// Enable power save mode
+_status power::disableThings() {
+  powerSave = true;
+  return _status::NOERR;
+} // _status power::disableThings()
+

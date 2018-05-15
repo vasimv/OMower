@@ -100,11 +100,15 @@ _status sonars::init() {
   memset((uint8_t *) sonarDist, 0, sizeof(sonarDist));
 
   currentSonar = 0;
+  enableSonars = true;
   return _status::NOERR;
 } // _status sonars::init() {
 
 // Poll routine - ping another pair, process data from previous ping
 void sonars::poll20() {
+  if (!enableSonars)
+    return;
+
   // Get data from dataSonars array and calculate distances
   processEcho(currentSonar);
   processEcho(currentSonar + SONARS_NUM / 2);
@@ -175,3 +179,15 @@ void sonars::processEcho(numThing n) {
     sonarFilt[n] = dist;
   sonarDist[n] = dist;
 } // void sonars::processEcho(numThing n)
+
+
+_status sonars::enableThings() {
+  enableSonars = true;
+  return _status::NOERR;
+} // _status sonars::enableThings() 
+
+_status sonars::disableThings() {
+  enableSonars = false;
+  return _status::NOERR;
+} // _status sonars::disableThings()
+
