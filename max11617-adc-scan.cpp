@@ -15,6 +15,7 @@
 volatile uint16_t adc11617Arr[_ADC_11617_CHANNELS_NUM];
 
 boolean adc11617Initialized = false;
+volatile boolean adc11617Disable = false;
 
 // Initialize ADC scanner
 void adc11617ScanInit() {
@@ -38,6 +39,10 @@ void adc11617Read() {
   uint8_t buf[_ADC_11617_CHANNELS_NUM * 2];
   uint16_t reordered;
   int res;
+
+  // Check if we disable scanning (low power)
+  if (adc11617Disable)
+    return;
 
   if (!adc11617Initialized)
     return;

@@ -20,6 +20,9 @@
 #define MAX11617_SETUP 0b10000010
 #define MAX11617_CONFIG 0b00010111
 
+// Disable flag (to prevent I2C bus conflicts)
+extern volatile boolean adc11617Disable;
+
 // Results array
 extern volatile uint16_t adc11617Arr[_ADC_11617_CHANNELS_NUM];
 
