@@ -175,6 +175,7 @@ _hwstatus nvmem::begin() {
     haveValid = false;
     buffer[0] = 0xAA;
     buffer[1] = 0x55;
+    *((uint32_t *) (buffer + 6)) = revision;
   }
 
   // Skip first bytes (signature, version and revision number)
@@ -190,6 +191,7 @@ void nvmem::commit() {
   uint32_t minVersion;
   boolean eraseNeed;
 
+  debug(L_NOTICE, (char *) F("nvmem::commit: %ul %ul\n"), curVersion, revision);
 #ifdef NVMEM_INTERNAL_FLASH
   // First find current block and check if we are really needed to write the flash
   if (curVersion > 0) {
@@ -223,7 +225,7 @@ void nvmem::commit() {
         freeBlock = p;
     }
   }
-  debug(L_DEBUG, (char *) F("nvmem::commit: lastBlock %lx freeBlock %lx minVersion %lu\n"),
+  debug(L_NOTICE, (char *) F("nvmem::commit: lastBlock %lx freeBlock %lx minVersion %lu\n"),
         lastBlock, freeBlock, minVersion);
   
   // Write to free block if available or erase lastBlock page and write to it
