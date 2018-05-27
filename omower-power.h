@@ -31,8 +31,8 @@ public:
 
 private:
   // Previous value for filter
-  uint16_t prevValueBatt;
-  uint16_t prevValueBoost;
+  volatile uint16_t prevValueBatt;
+  volatile uint16_t prevValueBoost;
 
   uint16_t readRawCurrent(numThing n);
 };
@@ -57,6 +57,9 @@ public:
   float minBatteryVoltage;
   // Maximum charge current
   float maxChargeCurrent;
+  // Minimum solar battery voltage (Vmp - couple volts)
+  float minSolarVoltage;
+  
 
   // Current sensors
   currentPow *currentSens;

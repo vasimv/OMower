@@ -81,17 +81,17 @@ void power::poll50() {
       canUseMain = true;
     else {
       // Check if solar voltage is enough
-      if (volts[P_SOLAR] > 7.0)
+      if (volts[P_SOLAR] > minSolarVoltage - 2.0f)
         canUseSolar = true;
     }
   }
 
   // Reset main duty timer if we're off
-  if (!canUseMain && !canUseSolar && (lastMainDuty > 0))
+  if ((!enableMain || !canUseMain) && !canUseSolar && (lastMainDuty > 0))
     setMain(0);
   
   // Reset solar booster duty timer
-  if (!canUseSolar && (lastSolarDuty > 0))
+  if ((!enableSolar || !canUseSolar) && (lastSolarDuty > 0))
     setSolar(0);
 
   // Charging from charge port, just regulate current output
@@ -132,7 +132,7 @@ void power::poll50() {
 
     // Check if the booster at the maximum, decrease charging current
     if ((lastSolarDuty >= MAX_CHARGE_PWM)
-        || (volts[P_SOLAR] < (volts[P_BATTERY])))
+        || (volts[P_SOLAR] < minSolarVoltage))
       lastMainDuty--;
     else {
       // Booster output is sufficient, decrease current output otherwise
@@ -187,7 +187,8 @@ power::power() {
   minDiffVoltage = 5.0;
   maxBatteryVoltage = 14.6;
   maxBatteryChargeStart = 14.2;
-  minBatteryVoltage = 9.0;
+  minBatteryVoltage = 10.0;
+  minSolarVoltage = 12.0;
   maxChargeCurrent = 0.5;
   powerSave = false;
 } // power::power()
@@ -220,7 +221,20 @@ _hwstatus power::begin() {
 
 // Emergency shutdown
 _status power::emergShutdown() {
+  boolean tmpEnableMain = enableMain;
+  boolean tmpEnableSolar = enableSolar;
+
+  enableMain = false;
+  enableSolar = false;
+  delay(100);
+  debug(L_NOTICE, (char *) F("Turning off power\n"));
+  pinMode(PIN_SHUTDOWN, OUTPUT);
   digitalWrite(PIN_SHUTDOWN, HIGH);
+  delay(1000);
+  digitalWrite(PIN_SHUTDOWN, LOW);
+  enableMain = tmpEnableMain;
+  enableSolar = tmpEnableSolar;
+  return _status::NOERR;
 } // _status power::emergShutdown()
 
 numThing power::numThings() {
@@ -277,7 +291,7 @@ currentPow::currentPow() {
 
 uint16_t currentPow::readRawCurrent(numThing n) {
   uint16_t value;
-  uint16_t *prevValue;
+  volatile uint16_t *prevValue;
 
   if (n == P_BATTERY) {
     value = adcArr[POW_CURRENT_TOTAL].lastRead;
