@@ -62,6 +62,8 @@ public:
   // Returs true if reached the destination
   virtual boolean reachedDest() { return destReached; };
 
+  // Constructor
+  navThing() {};
 protected:
   boolean destReached;
 };
@@ -72,6 +74,8 @@ public:
   // Settings variables:
   // ADC->Current koefficient
   float kCurrent;
+  // Offset for zero current
+  uint16_t zeroOffset;
 
   virtual _status init();
 
@@ -81,7 +85,6 @@ public:
   // Calibrate ACS725 sensor (when there is sure zero current)
   virtual void calibCurrent(numThing n);
 protected:
-  uint16_t zeroOffset;
 
   // Read raw current value
   virtual uint16_t readRawCurrent(numThing n);
