@@ -16,7 +16,7 @@ public:
 
 private:
   // Previous value for filter
-  uint16_t prevValue;
+  volatile uint16_t prevValue;
 
   uint16_t readRawCurrent(numThing n);
 };
