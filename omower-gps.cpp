@@ -1,6 +1,9 @@
 // GPS class for OMower
 // $Id$
 
+// Problems with Os optimization!
+#pragma GCC optimize ("O2")
+
 #include <omower-gps.h>
 #include <Arduino.h>
 #include <omower-debug.h>
@@ -62,8 +65,8 @@ void gps::parseString(char *buf, uint16_t len) {
           latitude, longitude, numSats);
   }
   if (tinygps.speed.isValid() && tinygps.speed.isUpdated()) {
-    speed = (uint16_t) (tinygps.speed.mps() * 100.0);
-    if (tinygps.course.deg() > 180.0)
+    speed = (uint16_t) (tinygps.speed.mps() * 100.0f);
+    if (tinygps.course.deg() > 180.0f)
       degree = -360 + tinygps.course.deg();
     else
       degree = tinygps.course.deg();
@@ -102,7 +105,7 @@ void gps::poll10() {
     // Calculate distance from odometry ticks
     deltaLeft = odoSens->readTicks(0) - leftTicks;
     deltaRight = odoSens->readTicks(1) - rightTicks;
-    deltaDist = 0.5 * (float)(deltaLeft + deltaRight) * odoSens->ticksCm;
+    deltaDist = 0.5f * (float)(deltaLeft + deltaRight) * odoSens->ticksCm;
     angleCur = imu::degreePI(imuSens->readCurDegree(0));
     deltaX = (deltaDist * sin(angleCur)) / KCORR_CM_TO_COORD;
     deltaY = (deltaDist * cos(angleCur)) / KCORR_CM_TO_COORD;
@@ -143,13 +146,13 @@ void gps::setTarget(int32_t latitudeDest, int32_t longitudeDest, boolean precisi
     latitudeTarg = latitudeLast;
     longitudeTarg = longitudeLast;
   } else 
-    calcPoint(1.0, latitudeTarg, longitudeTarg, latitudeDest, longitudeDest);
+    calcPoint(1.0f, latitudeTarg, longitudeTarg, latitudeDest, longitudeDest);
 } // void gps::setTarget(int32_t latitudeDest, int32_t longitudeDest, boolean precisionOnly, boolean splitWay)
 
 // Course error for gps navigation
 float gps::readCourseError() {
-  int16_t degreeCur = degree;
-  float degreeCurF, degreeDestF;
+  float degreeCurF = imu::degreePI(degree);
+  float degreeDestF;
   // 1 meter distance reach if not precise
   float maxDist = stopDistance;
   float curDist;
@@ -161,8 +164,8 @@ float gps::readCourseError() {
   // Stop if we've reached the destination
   curDist = abs(distance(latitude, longitude, latitudeTarg, longitudeTarg));
   if (curDist <= maxDist) {
-    // Check if distance is increasing instead decreasing or we're in less than 3 centimeters from the target
-    if ((lastDist < curDist) || (curDist < 0.03)) {
+    // Check if distance is increasing instead decreasing or we're in less than 5 centimeters from the target
+    if ((lastDist < curDist) || (curDist < 0.05f)) {
       debug(L_INFO, (char *) F("gps::readCourseError: reached destination (cur %ld %ld)\n"), latitude, longitude);
       if ((latitudeTarg == latitudeLast) && (longitudeTarg == longitudeLast)) {
         destReached = true;
@@ -170,11 +173,11 @@ float gps::readCourseError() {
       } else {
         // Split way, we've reached next point and calculating new one
         // Check if we're close to the end already or just make new point
-        if (abs(distance(latitudeTarg, longitudeTarg, latitudeLast, longitudeLast)) < 2.0) {
+        if (abs(distance(latitudeTarg, longitudeTarg, latitudeLast, longitudeLast)) < 3.0f) {
           latitudeTarg = latitudeLast;
           longitudeTarg = longitudeLast;
         } else 
-          calcPoint(2.0, latitudeTarg, longitudeTarg, latitudeLast, longitudeLast);
+          calcPoint(3.0f, latitudeTarg, longitudeTarg, latitudeLast, longitudeLast);
           debug(L_INFO, (char *) F("gps::readCourseError: new waypoint: %ld %ld\n"), latitudeTarg, longitudeTarg);
       }
     }
@@ -186,10 +189,9 @@ float gps::readCourseError() {
 
   // Get course from IMU if available
   if (imuSens != NULL) 
-    degreeCur = imuSens->readCurDegree(0);
+    degreeCurF = imuSens->readCurDegreeRad(0);
 
   // Calculate course correction
-  degreeCurF = imu::degreePI(degreeCur);
   degreeDestF = bearing(latitude, longitude, latitudeTarg, longitudeTarg);  
 
   float d = imu::scalePI(degreeDestF - degreeCurF);
@@ -262,8 +264,8 @@ void gps::calcPoint(float dist, int32_t &latitudeP, int32_t &longitudeP,
   float angle, deltaX, deltaY;
 
   angle = bearing(latitude, longitude, latitudeDest, longitudeDest);  
-  deltaX = (dist * sin(angle) * 100.0) / KCORR_CM_TO_COORD;
-  deltaY = (dist * cos(angle) * 100.0) / KCORR_CM_TO_COORD;
+  deltaX = (dist * sin(angle) * 100.0f) / KCORR_CM_TO_COORD;
+  deltaY = (dist * cos(angle) * 100.0f) / KCORR_CM_TO_COORD;
   latitudeP = latitude + (int32_t) deltaY;
   longitudeP = longitude + (int32_t) deltaX;
 } // void gps::calcPoint

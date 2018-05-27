@@ -60,6 +60,9 @@ public:
   // Odometer object for precision correction
   odometryMotors *odoSens;
 
+  // Current target coordinates
+  int32_t latitudeTarg, longitudeTarg;
+
   // Constructor (var init)
   gps();
 
@@ -114,8 +117,7 @@ private:
   // Convert tinygps's RawDegrees to int32_t
   int32_t coordToInt(const RawDegrees &degree);
 
-  // target coordinates and precision flag
-  int32_t latitudeTarg, longitudeTarg;
+  // Last target coordinates and precision flag
   int32_t latitudeLast, longitudeLast;
   boolean precisionTarg;
 
