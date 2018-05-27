@@ -31,21 +31,25 @@ void motorMow::poll10() {
   if (modulateSpeed == 0)
     speedSet = maxSpeed;
   else {
-    // Variable speed
-    uint8_t diffCycle = modulateSpeed / 8;
-    uint8_t minSpeed = maxSpeed - modulateSpeed;
-
-    speedSet = minSpeed + cycle * diffCycle;
-    if (millis() > (lastCycle + modulatePeriod / 8)) {
-      lastCycle = millis();     
-      cycle++;
-    }
+    if (maxSpeed != 0) {
+      // Variable speed
+      uint8_t diffCycle = modulateSpeed / 8;
+      uint8_t minSpeed = maxSpeed - modulateSpeed;
+  
+      speedSet = minSpeed + cycle * diffCycle;
+      if (millis() > (lastCycle + modulatePeriod / 8)) {
+        lastCycle = millis();     
+        cycle++;
+      }
+    } else
+      speedSet = 0;
   }
 
   // Check if we have current sensor (overcurrent protection, calibration)
   if (currentSens) { 
     float current = currentSens->readCurrent(0);
     
+    debug(L_DEBUG, (char *) F("motormow::poll10: Current %f\n"), current);
     // Overcurrent protection
     if (current > currentSens->currentMax) {
       errorStatus = 1;
@@ -96,6 +100,7 @@ void motorMow::setSpeed(uint8_t speed) {
   // Calculate duty with integer sizes in mind
   duty = MOW_PWM_ZEROMIDDLE
          + ((duty * (int32_t) MOW_PWM_OFFSET * (int32_t) speed) / 65535) * (int32_t) maxPWM;
+  debug(L_DEBUG, (char *) F("motorMow::setSpeed: %hu, pwm: %lu\n"), speed, duty);
 #ifdef CH_MOW_PPM
   pwm_mow.set_duty(duty);
 #endif
@@ -112,8 +117,13 @@ _status motorMow::setHeight(uint8_t height) {
   // Calculate real height based on steps number
   if (steps > 0)
     heightMow = heightMow - res / STEPS_PER_MM;
-  else 
-    heightMow = heightMow + res / STEPS_PER_MM;
+  else  {
+    // If we detect S_END signal - zero height
+    if (digitalRead(PIN_MOW_S_END) == LOW)
+      heightMow = 0;
+    else
+      heightMow = heightMow + res / STEPS_PER_MM;
+  }
   return _status::NOERR;
 } // _status motorMow::setHeight(uint8_t height)
 
@@ -134,6 +144,7 @@ _hwstatus motorMow::begin() {
 #endif
   maxSpeed = 0;
   currentSpeed = 0;
+  heightMow = 0;
   return _hwstatus::ONLINE;
 } // _hwstatus mow::begin()
 
@@ -179,7 +190,7 @@ int motorMow::stepMove(int steps) {
       break;
     }
   }
-
+  
   // Disable stepper driver
   delay(50);
   digitalWrite(PIN_MOW_RESET, LOW);
@@ -197,6 +208,7 @@ _status motorMow::init() {
   currentSpeed = 0;
 
   // Move mowing motor up to find zero height
+  tmpHeight = heightMow;
   stepMove(STEPS_PER_MM * heightMowMin * 1.2);
   heightMow = 0;
   setHeight(tmpHeight);
