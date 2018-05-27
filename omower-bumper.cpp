@@ -11,8 +11,10 @@
 
 // Read bumper status
 boolean bumper::readSensor(numThing n) {
+#if (BUMPERS_NUM > 0)
   if (bumperCount[n] > 0)
     return true;
+#endif
   return false;
 } // boolean bumper::readSensor(numThing n)
 
@@ -29,6 +31,7 @@ _status bumper::init() {
     bumperCount[i] = 0;
     bumperDisable[i] = false;
   }
+  delay(1);
 
   // Check if bumper sensor is in active status at start (not connected/not working)
   if (digitalRead(PIN_BUMP_LEFTFORW) == BUMPERS_ACTIVE)
