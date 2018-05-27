@@ -1,6 +1,9 @@
 // OMower motors class
 // $Id$
 
+// Problems with Os optimization!
+#pragma GCC optimize ("O2")
+
 #include <omower-defs.h>
 #include <Arduino.h>
 #include "omower-constants.h"
@@ -12,12 +15,27 @@ using namespace arduino_due::pwm_lib;
 
 boolean _notMoving;
 
+#ifndef MOT_DRIVER_DRV8825
 pwm<pwm_pin::CH_MOT_LEFTFORW_PWM> pwm_leftforw;
 pwm<pwm_pin::CH_MOT_RIGHTFORW_PWM> pwm_rightforw;
 
 #ifdef MOT_QUAD_WHEELS
 pwm<pwm_pin::CH_MOT_LEFTBACK_PWM> pwm_leftback;
 pwm<pwm_pin::CH_MOT_RIGHTBACK_PWM> pwm_rightback;
+#endif
+#else
+#include "due-adc-scan.h"
+
+volatile uint32_t _leftStepsDivider = 0;
+volatile uint32_t _rightStepsDivider = 0;
+volatile boolean _lowerLeftStep = false;
+volatile boolean _lowerRightStep = false;
+volatile int32_t _leftStepsCount;
+volatile int32_t _rightStepsCount;
+volatile uint8_t _motorsWakeUp = 0;
+
+// Calculate divider ratio for stepping
+#define DRV8825_DIV(x) ((x == 0) ? 0 : (((uint32_t) (_ADC_SAMPLE_RATE / 600) * 255L) / (uint32_t) abs(x)))
 #endif
 
 // Constructor
@@ -56,7 +74,7 @@ void motors::poll10() {
       if ((leftPWM == 0) && (rightPWM == 0)) {
         debug(L_INFO, "motors::poll10: emergency stop complete\n");
         curStatus = _moveStatus::STOP;
-        return;
+        break;
       }
       updateSpeed(0, 0, accelStop);
       break;
@@ -66,7 +84,7 @@ void motors::poll10() {
       // We've stopped already, do nothing
       if ((leftPWM == 0) && (rightPWM == 0)) {
         debug(L_DEBUG, "motors::poll10: stop complete\n");
-        return;
+        break;
       }
       updateSpeed(0, 0, accel);
       break;
@@ -83,7 +101,7 @@ void motors::poll10() {
       // Safeguard check
       if (!courseThing) {
         curStatus = _moveStatus::STOP;
-        return;
+        break;
       }
       // Get course error for PID controller
       courseError = courseThing->readCourseError();
@@ -93,7 +111,7 @@ void motors::poll10() {
         debug(L_INFO, "motors::poll10: courseThing called for emergency stop\n");
         curStatus = _moveStatus::EMERG_STOP;
         poll10();
-        return;
+        break;
       }
       if (courseError > 999.0) {
         if ((leftPWM != 0) || (rightPWM != 0))
@@ -113,10 +131,10 @@ void motors::poll10() {
           leftSpeed = maxSpeed + (int16_t) (pidOut * (float) maxSpeed);
           rightSpeed = maxSpeed - (int16_t) (pidOut * (float) maxSpeed);
         }
-	// Do not allow to stop one of side wheels while other is rotating
-	if ((leftSpeed == 0) && (rightSpeed !=0))
+      	// Do not allow to stop one of side wheels while other is rotating
+      	if ((leftSpeed == 0) && (rightSpeed !=0))
           leftSpeed = -rightSpeed * 255 / 160;
-	if ((rightSpeed == 0) && (leftSpeed != 0))
+        if ((rightSpeed == 0) && (leftSpeed != 0))
           rightSpeed = -leftSpeed * 255 / 160;
       }
 
@@ -141,8 +159,12 @@ void motors::poll10() {
 
   // Set _notMoving flag for external stuff
   if ((leftPWM == 0) && (rightPWM == 0)) {
-    if ((millis() - lastMoveTime) > 1000)
+    if ((millis() - lastMoveTime) > 1000) {
       _notMoving = true;
+      #ifdef MOT_DRIVER_DRV8825
+      disableThings();
+      #endif
+    }
   } else {
     _notMoving = false;
     lastMoveTime = millis();
@@ -201,15 +223,16 @@ float motors::pidCalc(float error, float P, float I, float D) {
   dErr = error / M_PI;
 
   // Calculate PID output
-  sumErr += dErr / 10.0; 
-  iErr = sumErr * I / 10.0;
+  iErr = sumErr;
   if (iErr > 1.0) {
     iErr = 1.0;
     sumErr = 10.0 / I;
-  }
-  if (iErr < -1.0) {
-    iErr = -1.0;
-    sumErr = -10.0 / I;
+  } else {
+    if (iErr < -1.0) {
+      iErr = -1.0;
+      sumErr = -10.0 / I;
+   } else
+    sumErr += (dErr * I) / 10.0; 
   }
   res = dErr * P + iErr - D * (dErr - lastErr);
   debug(L_NOTICE, "motors::pidCalc: error %1.3f, dErr %1.3f, sumErr %1.3f, lasterr %1.3f, res %1.3f\n", error, dErr, sumErr, lastErr, res);
@@ -371,9 +394,28 @@ _hwstatus motors::begin() {
   pinMode(PIN_MOT_RIGHT_DIR, OUTPUT);
   digitalWrite(PIN_MOT_RIGHT_DIR, LOW);
   #endif
+  #ifdef MOT_DRIVER_DRV8825
+  pinMode(PIN_MOT_FORW_ENABLE, OUTPUT);
+  digitalWrite(PIN_MOT_FORW_ENABLE, LOW);
+  pinMode(PIN_MOT_LEFTFORW_FAULT, INPUT_PULLUP);
+  pinMode(PIN_MOT_RIGHTFORW_FAULT, INPUT_PULLUP);
+  pinMode(PIN_MOT_LEFTFORW_DIR, OUTPUT);
+  digitalWrite(PIN_MOT_LEFTFORW_DIR, LOW);
+  pinMode(PIN_MOT_RIGHTFORW_DIR, OUTPUT);
+  digitalWrite(PIN_MOT_RIGHTFORW_DIR, LOW);
+  pinMode(PIN_MOT_LEFTFORW_STEP, OUTPUT);
+  digitalWrite(PIN_MOT_LEFTFORW_STEP, LOW);
+  pinMode(PIN_MOT_RIGHTFORW_STEP, OUTPUT);
+  digitalWrite(PIN_MOT_RIGHTFORW_STEP, LOW);
+  #endif
 } // motors::motors()
 
 void motors::setPWM(int16_t left, int16_t right) {
+#ifdef MOT_DRIVER_DRV8825
+  // Don't change speed if not needed (will mess stepper cycles)
+  if ((leftPWM == left) && (rightPWM == right) && (left != 0) && (right != 0))
+    return;
+#endif
   leftPWM = left;
   rightPWM = right;
   // Inverse direction for opposite motor
@@ -382,6 +424,10 @@ void motors::setPWM(int16_t left, int16_t right) {
   else
     right = -right;
   debug(L_NOTICE, (char *) F("motors::setPWM: %hd %hd\n"), left, right);
+  #ifdef MOT_DRIVER_DRV8825
+  if ((digitalRead(PIN_MOT_FORW_ENABLE) == LOW) && ((leftPWM != 0) || (rightPWM != 0)))
+    _motorsWakeUp = DRV8825_WAKEUP;
+  #endif
   if (left <= 0) {
     #if defined(MOT_DRIVER_DUAL_MC33926)
     digitalWrite(PIN_MOT_LEFTFORW_DIR, LOW);
@@ -394,6 +440,15 @@ void motors::setPWM(int16_t left, int16_t right) {
     #ifdef MOT_DRIVER_IHM12A1
     digitalWrite(PIN_MOT_LEFT_DIR, LOW);
     analogWrite(PIN_MOT_LEFT_PWM, abs(left));
+    #endif
+    #ifdef MOT_DRIVER_DRV8825
+    digitalWrite(PIN_MOT_LEFTFORW_DIR, HIGH);
+    _leftStepsDivider = DRV8825_DIV(left);
+    _leftStepsCount = _leftStepsDivider;
+    if (left != 0)
+      digitalWrite(PIN_MOT_LEFTFORW_STEP, HIGH);
+    else
+      digitalWrite(PIN_MOT_LEFTFORW_STEP, LOW);
     #endif
   } else {
     #if defined(MOT_DRIVER_DUAL_MC33926)
@@ -410,6 +465,12 @@ void motors::setPWM(int16_t left, int16_t right) {
     digitalWrite(PIN_MOT_LEFT_DIR, HIGH);
     analogWrite(PIN_MOT_LEFT_PWM, abs(left));
     #endif
+    #ifdef MOT_DRIVER_DRV8825
+    digitalWrite(PIN_MOT_LEFTFORW_DIR, LOW);
+    _leftStepsDivider = DRV8825_DIV(left);
+    _leftStepsCount = _leftStepsDivider;
+    digitalWrite(PIN_MOT_LEFTFORW_STEP, HIGH);
+    #endif
   }
   if (right <= 0) {
     #if defined(MOT_DRIVER_DUAL_MC33926)
@@ -423,6 +484,15 @@ void motors::setPWM(int16_t left, int16_t right) {
     #ifdef MOT_DRIVER_IHM12A1
     digitalWrite(PIN_MOT_RIGHT_DIR, HIGH);
     analogWrite(PIN_MOT_RIGHT_PWM, abs(right));
+    #endif
+    #ifdef MOT_DRIVER_DRV8825
+    digitalWrite(PIN_MOT_RIGHTFORW_DIR, HIGH);
+    _rightStepsDivider = DRV8825_DIV(right);
+    _rightStepsCount = _leftStepsDivider;
+    if (right != 0)
+      digitalWrite(PIN_MOT_RIGHTFORW_STEP, HIGH);
+    else
+      digitalWrite(PIN_MOT_RIGHTFORW_STEP, LOW);
     #endif
   } else {
     #ifdef MOT_DRIVER_DUAL_MC33926
@@ -438,6 +508,12 @@ void motors::setPWM(int16_t left, int16_t right) {
     #ifdef MOT_DRIVER_IHM12A1
     digitalWrite(PIN_MOT_RIGHT_DIR, LOW);
     analogWrite(PIN_MOT_RIGHT_PWM, abs(right));
+    #endif
+    #ifdef MOT_DRIVER_DRV8825
+    digitalWrite(PIN_MOT_RIGHTFORW_DIR, HIGH);
+    _rightStepsDivider = DRV8825_DIV(right);
+    _rightStepsCount = _leftStepsDivider;
+    digitalWrite(PIN_MOT_RIGHTFORW_STEP, HIGH);
     #endif
   }
 } // void motors::setPWM(int16_t left, int16_t right)
@@ -461,6 +537,10 @@ _status motors::init() {
   analogWrite(PIN_MOT_LEFT_PWM, 0);
   analogWrite(PIN_MOT_RIGHT_PWM, 0);
   #endif
+  #ifdef MOT_DRIVER_DRV8825
+  _leftStepsDivider = _rightStepsDivider = 0;
+  _motorsWakeUp = 0;
+  #endif
   setPWM(0, 0);
   _notMoving = true;
   lastMoveTime = 0;
@@ -478,6 +558,9 @@ _status motors::enableThings() {
   #ifdef MOT_DRIVER_IHM12A1
   digitalWrite(PIN_MOT_ENABLE, HIGH);
   #endif
+  #ifdef MOT_DRIVER_DRV8825
+  digitalWrite(PIN_MOT_FORW_ENABLE, HIGH);
+  #endif
   return _status::NOERR;
 } // _status motors::enableThings()
 
@@ -491,6 +574,9 @@ _status motors::disableThings() {
   #endif
   #ifdef MOT_DRIVER_IHM12A1
   digitalWrite(PIN_MOT_ENABLE, LOW);
+  #endif
+  #ifdef MOT_DRIVER_DRV8825
+  digitalWrite(PIN_MOT_FORW_ENABLE, LOW);
   #endif
   return _status::NOERR;
 } // _status motors::enableThings()
@@ -512,6 +598,9 @@ uint8_t motors::checkFault() {
   #endif
   #ifdef MOT_DRIVER_IHM12A1
   if (digitalRead(PIN_MOT_FAULT) == LOW) {
+  #endif
+  #ifdef MOT_DRIVER_DRV8825
+  if ((digitalRead(PIN_MOT_LEFTFORW_FAULT) == LOW) || (digitalRead(PIN_MOT_RIGHTFORW_FAULT) == LOW)) {
   #endif
     debug(L_WARNING, (char *) F("motors::checkFault: detected driver fault\n"));
     addError(2);
@@ -548,6 +637,42 @@ _hwstatus motors::softError() {
   #ifdef MOT_DRIVER_IHM12A1
   if (digitalRead(PIN_MOT_ENABLE) == LOW)
   #endif
+  #ifdef MOT_DRIVER_DRV8825
+  if (digitalRead(PIN_MOT_FORW_ENABLE) == LOW)
+  #endif
     return _hwstatus::DISABLED;
   return _hwstatus::ONLINE;
 } // _hwstatus softError()
+
+#ifdef MOT_DRIVER_DRV8825
+// Pulse steppers (called from due-adc-scan.cpp interrupt 38412Hz routine)
+void pulseSteppers() {
+  if (_motorsWakeUp) {
+    digitalWrite(PIN_MOT_FORW_ENABLE, HIGH);
+    _motorsWakeUp--;
+    return;
+  }
+  if (_leftStepsDivider) {
+    if (_lowerLeftStep) {
+      digitalWrite(PIN_MOT_LEFTFORW_STEP, LOW);
+      _lowerLeftStep = false;
+    }
+    if ((_leftStepsCount--) <= 0) {
+      digitalWrite(PIN_MOT_LEFTFORW_STEP, HIGH);
+      _lowerLeftStep = true;
+      _leftStepsCount = _leftStepsDivider;
+    }
+  }
+  if (_rightStepsDivider) {
+    if (_lowerRightStep) {
+      digitalWrite(PIN_MOT_RIGHTFORW_STEP, LOW);
+      _lowerRightStep = false;
+    }
+    if ((_rightStepsCount--) <= 0) {
+      digitalWrite(PIN_MOT_RIGHTFORW_STEP, HIGH);
+      _lowerRightStep = true;
+      _rightStepsCount = _rightStepsDivider;
+    }
+  }
+} // void pulseSteppers()
+#endif

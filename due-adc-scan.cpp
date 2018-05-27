@@ -9,6 +9,9 @@ volatile uint32_t adcCounter;
 volatile adcArr_t adcArr[_MAX_ADC_CHANNELS_NUM];
 volatile uint32_t adcAllChannelsMask;
 
+// Dummy function for steppers motors driver
+__attribute__((weak)) void pulseSteppers() {}
+
 // Timer interrupt handler
 void adcTimerCallback() {
   interrupts();
@@ -30,6 +33,9 @@ void adcTimerCallback() {
   // Start new conversion
   ADC->ADC_CHER = adcAllChannelsMask;
   ADC->ADC_CR = ADC_CR_START;
+
+  // Call steppers motor driver
+  pulseSteppers();
 } // void adcTimerCallback
 
 // Add adc channel to the scan table
