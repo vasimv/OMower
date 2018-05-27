@@ -6,6 +6,7 @@
 #include "omower-constants.h"
 #include "omower-debug.h"
 #include "omower-mow.h"
+#include "omower-motors.h"
 #include <pwm_lib.h>
 
 using namespace arduino_due::pwm_lib;
@@ -44,6 +45,10 @@ void motorMow::poll10() {
     } else
       speedSet = 0;
   }
+
+  // Check if robot is not mowing, then disable mower motor
+  if (_notMoving)
+    speedSet = 0;
 
   // Check if we have current sensor (overcurrent protection, calibration)
   if (currentSens) { 
