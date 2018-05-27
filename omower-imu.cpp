@@ -7,6 +7,7 @@
 #include <Arduino.h>
 #include <omower-imu.h>
 #include <due-i2c-blocking.h>
+#include <max11617-adc-scan.h>
 #include <omower-motors.h>
 #include <omower-debug.h>
 
@@ -130,7 +131,7 @@
 #endif
 
 // permanent calibration values
-#define DEBUG_IMU_CONSTANT
+// #define DEBUG_IMU_CONSTANT
 
 // Print accelerometer/gyro data on each poll
 // #define DEBUG_IMU_FULL
@@ -173,9 +174,12 @@ void imu::poll50() {
   loopTime = (float) (now - lastTime) / 1000.0f;
   lastTime = now;
 
+  // debug(L_DEBUG, (char *) F("IR: %.3f %.3f %.3f %.3f %.3f %.3f %.3f %.3f %.3f %.3f %hu\n"), acc.x, acc.y, acc.z,
+  //      com.x, com.y, com.z, gyro.x, gyro.y, gyro.z, loopTime, comSelfTest);
   #ifdef MADGWICK_FILTER
   // Calculate roll, pitch and yaw
   madgwickUpdate();
+  // debug(L_DEBUG, (char *) F("IM: %.3f %.3f %.3f %.3f\n"), q0, q1, q2, q3);
   if (comSelfTest == 0) {
     filtPitch = accPitch;
     filtRoll = accRoll;
@@ -754,20 +758,10 @@ void imu::calibMPU6500() {
 #ifdef IMU_FXOS8700
 // Read data from FXOS8700 accelerometer+magnetometer
 boolean imu::readFXOS8700() {
-  volatile struct __attribute__((packed)) {
-    uint8_t status;
-    int16_t accX;
-    int16_t accY;
-    int16_t accZ;
-  } data;
-  volatile struct __attribute__((packed)) {
-    int16_t magX;
-    int16_t magY;
-    int16_t magZ;
-  } dataMag;
-
+  uint8_t data[7];
   uint8_t i, res;
   uint8_t samples = 0;
+  int16_t tmpX, tmpY, tmpZ;
 
   // Zero sum values
   acc.x = acc.y = acc.z = 0.0f;
@@ -775,44 +769,44 @@ boolean imu::readFXOS8700() {
 
   // Read accelerometer FIFO
   while (1) {
-    if ((res = i2cRead(bus, FXOS_ADDR, FXOS_STATUS, (uint8_t *) &data, sizeof(data))) != sizeof(data)) {
+    if ((res = i2cRead(bus, FXOS_ADDR, FXOS_STATUS, (uint8_t *) &data, 7)) != 7) {
       debug(L_DEBUG, (char *) F("No data read from accelerometer FXOS8700 (%hd)!\n"), res);
       addError(2);
       return false;
     }
 
     // Check if fifo is fully read
-    if ((data.status & 0x3F) == 0)
+    if ((data[0] & 0x3F) == 0)
       break;
 
-    // Swap bytes
-    for (i = 0; i < 3; i++)
-      swapBytes(((uint8_t *) &data) + 1 + i * 2);
-  
+    tmpX = ((int16_t) data[1] << 8) | data[2];
+    tmpY = ((int16_t) data[3] << 8) | data[4];
+    tmpZ = ((int16_t) data[5] << 8) | data[6];
+
 #ifdef NO_CALIB_ACCEL
-    acc.x += (float) data.accX / 16384.0f;
-    acc.y += (float) data.accY / 16384.0f;
-    acc.z += (float) data.accZ / 16384.0f;
+    acc.x += (float) tmpX / 16384.0f;
+    acc.y += (float) tmpY / 16384.0f;
+    acc.z += (float) tmpZ / 16384.0f;
 #else
-    acc.x += (float) data.accX / 16384.0f - accOfs.x;
-    acc.y += (float) data.accY / 16384.0f - accOfs.y;
-    acc.z += (float) data.accZ / 16384.0f - accOfs.z;
+    acc.x += (float) tmpX / 16384.0f - accOfs.x;
+    acc.y += (float) tmpY / 16384.0f - accOfs.y;
+    acc.z += (float) tmpZ / 16384.0f - accOfs.z;
 #endif
     samples++;
   }
 
   // Read magnitometer data
-  if ((res = i2cRead(bus, FXOS_ADDR, FXOS_M_OUT_X_MSB, (uint8_t *) &dataMag, sizeof(dataMag))) != sizeof(dataMag)) {
+  if ((res = i2cRead(bus, FXOS_ADDR, FXOS_M_OUT_X_MSB, data, 6)) != 6) {
     debug(L_DEBUG, (char *) F("No data read from magnetometer FXOS8700 (%hd)!\n"), res);
     addError(1);
     return false;
   }
-  // Swap bytes
-  for (i = 0; i < 3; i++)
-    swapBytes(((uint8_t *) &dataMag) + i * 2);
-  com.x = (dataMag.magX - comOfs.x) / (comScale.x * 0.5f);
-  com.y = (dataMag.magY - comOfs.y) / (comScale.y * 0.5f);
-  com.z = (dataMag.magZ - comOfs.z) / (comScale.z * 0.5f);
+  tmpX = ((int16_t) data[0] << 8) | data[1];
+  tmpY = ((int16_t) data[2] << 8) | data[3];
+  tmpZ = ((int16_t) data[4] << 8) | data[5];
+  com.x = ((float) tmpX - comOfs.x) / (comScale.x * 0.5f);
+  com.y = ((float) tmpY - comOfs.y) / (comScale.y * 0.5f);
+  com.z = ((float) tmpZ - comOfs.z) / (comScale.z * 0.5f);
 
   acc.x /= (float) samples;
   acc.y /= (float) samples;
@@ -952,12 +946,8 @@ boolean imu::initFXOS8700() {
 #ifdef IMU_FXAS21002
 // Read data from FXAS21002 gyroscope
 boolean imu::readFXAS21002() {
-  volatile struct __attribute__((packed)) {
-    uint8_t status;
-    int16_t gyroX;
-    int16_t gyroY;
-    int16_t gyroZ;
-  } data;
+  uint8_t data[7];
+  int16_t tmpX, tmpY, tmpZ;
   int8_t tmp;
   uint8_t samples = 0;
 
@@ -971,17 +961,16 @@ boolean imu::readFXAS21002() {
       addError(3);
      return false;
     }
-    if ((data.status & 0x3F) == 0)
+    if ((data[0] & 0x3F) == 0)
       break;
 
-    // Swap bytes
-    swapBytes((uint8_t *) &data + 1);
-    swapBytes((uint8_t *) &data + 3);
-    swapBytes((uint8_t *) &data + 5);
+    tmpX = ((int16_t) data[1] << 8) | (int16_t) data[2];
+    tmpY = ((int16_t) data[3] << 8) | (int16_t) data[4];
+    tmpZ = ((int16_t) data[5] << 8) | (int16_t) data[6];
 
-    gyro.x += (float) data.gyroX * ((FXAS_GRES * M_PI) / 180.0f);
-    gyro.y += (float) data.gyroY * ((FXAS_GRES * M_PI) / 180.0f);
-    gyro.z += (float) data.gyroZ * ((FXAS_GRES * M_PI) / 180.0f);
+    gyro.x += (float) tmpX * ((FXAS_GRES * M_PI) / 180.0f);
+    gyro.y += (float) tmpY * ((FXAS_GRES * M_PI) / 180.0f);
+    gyro.z += (float) tmpZ * ((FXAS_GRES * M_PI) / 180.0f);
     if (gyroCalibrated) {
       gyro.x += gyroOfs.x;
       gyro.y += gyroOfs.y;
@@ -1468,11 +1457,6 @@ _hwstatus imu::softError() {
   return _hwstatus::ONLINE;
 } // _hwstatus imu::softError()
 
-// Read calibration from eeprom
-_status readCalibration() {
-  return _status::NOERR;
-} // _status readCalibration()
-
 // Hardware initialization (once)
 _hwstatus imu::begin() {
   debug(L_DEBUG, (char *) F("imu::begin\n"));
@@ -1482,6 +1466,9 @@ _hwstatus imu::begin() {
 // (re-)Initialization of IMU
 _status imu::init(nvmem *saveMem) {
   debug(L_INFO, (char *) F("imu::init\n"));
+
+  adc11617Disable = true;
+  com.x = com.y = com.z = acc.x = acc.y = acc.z = gyro.x = gyro.y = gyro.z = 0.0f;
 
   oSave = saveMem;
   if (oSave) {
@@ -1510,11 +1497,6 @@ _status imu::init(nvmem *saveMem) {
   // Don't have barometer calibration yet
   baroCalibrated = true;
 
-  // Check if we need calibration
-  if (readCalibration() != _status::NOERR) {
-    errorStatus = 3;
-  }
-
   // Clear tables
   memset((uint8_t *) &com, 0, sizeof(com));
   memset((uint8_t *) &gyro, 0, sizeof(gyro));
@@ -1523,8 +1505,10 @@ _status imu::init(nvmem *saveMem) {
   #ifdef IMU_GY80
   // Initialize IMU
   imuLocked = true;
-  if (!initL3G4200D())
+  if (!initL3G4200D()) {
+    adc11617Disable = false;
     return _status::ERR;
+  }
   initBMP085();
   initADXL345B();
   initHMC5883L();
@@ -1532,20 +1516,26 @@ _status imu::init(nvmem *saveMem) {
   #endif
   #ifdef IMU_MPU9250
   imuLocked = true;
-  if (!checkMPU9250())
+  if (!checkMPU9250()) {
+    adc11617Disable = false;
     return _status::ERR;
+  }
   calibMPU6500();
   initMPU6500();
   initAK8963();
   imuLocked = false;
   #endif
   #ifdef IMU_FXOS8700
-  if (!initFXOS8700())
+  if (!initFXOS8700()) {
+    adc11617Disable = false;
     return _status::ERR;
+  }
   #endif
   #ifdef IMU_FXAS21002
-  if (!initFXAS21002())
+  if (!initFXAS21002()) {
+    adc11617Disable = false;
     return _status::ERR;
+  }
   #endif
 
 #ifdef DEBUG_IMU_CONSTANT
@@ -1571,6 +1561,7 @@ _status imu::init(nvmem *saveMem) {
 #endif
   startCompassCalib();
 
+  adc11617Disable = false;
   return _status::NOERR;
 } // _status imu::init(nvmem *saveMem)
 
@@ -1578,10 +1569,10 @@ _status imu::init(nvmem *saveMem) {
 // Initialize filter
 void imu::madgwickInit() {
   invSampleFreq = 1.0f / MADGWICK_RATE;
-  q0 = 1.0f;
-  q1 = 0.0f;
-  q2 = 0.0f;
-  q3 = 0.0f;
+  q0 = q0Prev = 1.0f;
+  q1 = q1Prev = 0.0f;
+  q2 = q2Prev = 0.0f;
+  q3 = q3Prev = 0.0f;
 } // void imu::madgwickInit()
 
 float imu::invSqrt(float x) {
@@ -1610,7 +1601,7 @@ float imu::invSqrt(float x) {
 
 void imu::madgwickUpdate() {
   float recipNorm;
-  float s0, s1, s2, s3;
+  volatile float s0, s1, s2, s3;
   float qDot1, qDot2, qDot3, qDot4;
   float hx, hy;
   float _2q0mx, _2q0my, _2q0mz, _2q1mx, _2bx, _2bz, _4bx, _4bz, _2q0, _2q1;
@@ -1699,6 +1690,19 @@ void imu::madgwickUpdate() {
   q2 *= recipNorm;
   q3 *= recipNorm;
 
+  // Overflow check!
+  if (isnan(q0) || isnan(q1) || isnan(q2) || isnan(q3)) {
+    q0 = q0Prev;
+    q1 = q1Prev;
+    q2 = q2Prev;
+    q3 = q3Prev;  
+  } else {
+    q0Prev = q0;
+    q1Prev = q1;
+    q2Prev = q2;
+    q3Prev = q3;
+  }
+
   accRoll = atan2f(q0*q1 + q2*q3, 0.5f - q1*q1 - q2*q2);
   accPitch = asinf(-2.0f * (q1*q3 - q0*q2));
   // We use negative sign for WEST, not EAST
@@ -1769,7 +1773,7 @@ void imu::setCourse(int16_t degree, boolean stopWhenReached) {
 float imu::readCourseError() {
   float d;
 
-  d = scalePI(courseCur - degreePI(readCurDegree(0)));
+  d = scalePI(courseCur - readCurDegreeRad(0));
 
   // Range check
   if (d < -M_PI)
@@ -1787,9 +1791,14 @@ float imu::readCourseError() {
   return d;
 } // float imu::readCourseError()
 
+// Current course in radians
+float imu::readCurDegreeRad(numThing n) {
+  return scalePI(filtYaw + ((inclMag / 180.0f) * M_PI));
+} // float imu::readCurDegreeRad(numThing n)
+
 // Current course
 int16_t imu::readCurDegree(numThing n) {
-  return piDegree(scalePI(filtYaw + ((inclMag / 180.0f) * M_PI)));
+  return piDegree(readCurDegreeRad(0));
 } // int16_t imu::readCurDegree(numThing n)
 
 // Current pitch degree
@@ -1863,6 +1872,7 @@ _status imu::saveCalib() {
 
   if (oSave) {
     oSave->curAddr = nvmemAddr;
+    debug(L_NOTICE, (char *) F("Saving IMU calibration to %04x\n"), oSave->curAddr);
     if (compassCalibrated) {
       oSave->writeMem(comOfs.x);
       oSave->writeMem(comOfs.y);
@@ -1900,6 +1910,7 @@ _status imu::loadCalib() {
   float tmpX, tmpY, tmpZ;
 
   if (oSave) {
+    debug(L_NOTICE, (char *) F("Loading IMU calibration from %04x\n"), nvmemAddr);
     oSave->curAddr = nvmemAddr;
     oSave->readMem(tmpX);
     oSave->readMem(tmpY);

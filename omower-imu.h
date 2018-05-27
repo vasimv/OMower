@@ -34,7 +34,10 @@ public:
   // (magnetic north pole offset from the geographic one)
   float inclMag;
 
-  // Current course (with magnetic inclination)
+  // Current course (with magnetic inclination) in radians
+  float readCurDegreeRad(numThing n);
+
+  // Current course (with magnetic inclination) in degress
   int16_t readCurDegree(numThing n);
 
   // Current pitch degree
@@ -187,10 +190,10 @@ private:
 
 #ifdef MADGWICK_FILTER
   // Filter stuff
-  volatile float q0;
-  volatile float q1;
-  volatile float q2;
-  volatile float q3;
+  volatile float q0, q0Prev;
+  volatile float q1, q1Prev;
+  volatile float q2, q2Prev;
+  volatile float q3, q3Prev;
   volatile float invSampleFreq;
 
   float invSqrt(float x);
