@@ -1608,6 +1608,20 @@ void imu::madgwickUpdate() {
   float _2q2, _2q3, _2q0q2, _2q2q3, q0q0, q0q1, q0q2, q0q3, q1q1, q1q2;
   float q1q3, q2q2, q2q3, q3q3;
 
+  // Fix for wrong compass values in case of bad calibration
+  if (com.x > 1.0f)
+    com.x = 1.0f;
+  if (com.x < -1.0f)
+    com.x = -1.0f;
+  if (com.y > 1.0f)
+    com.y = 1.0f;
+  if (com.y < -1.0f)
+    com.y = -1.0f;
+  if (com.z > 1.0f)
+    com.z = 1.0f;
+  if (com.z < -1.0f)
+    com.z = -1.0f;
+
   // Rate of change of quaternion from gyroscope
   qDot1 = 0.5f * (-q1 * gyro.x - q2 * gyro.y - q3 * gyro.z);
   qDot2 = 0.5f * (q0 * gyro.x + q2 * gyro.z - q3 * gyro.y);
