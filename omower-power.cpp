@@ -253,7 +253,11 @@ uint16_t power::readRawVoltage(numThing n) {
 
   switch (n) {
     case P_BATTERY:
+      #ifndef DISABLE_BATTERY_CHECK
       value = adcArr[POW_VOLTAGE_BATT].lastRead;
+      #else
+      value = 12.0f / kVoltage;
+      #endif
       break;
     case P_SOLAR:
       value = adcArr[POW_VOLTAGE_SOLAR].lastRead;
