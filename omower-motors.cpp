@@ -47,6 +47,7 @@ motors::motors() {
 void motors::poll10() {
   float courseError;
   float pidOut;
+  uint8_t speedCorr;
 
   debug(L_DEBUG, "motors::poll10: curStatus = %d, endtime= %lu, leftPWM = %d, rightPWM = %d\n",
        curStatus, endTime, leftPWM, rightPWM);
@@ -128,8 +129,17 @@ void motors::poll10() {
                 courseError, pidOut, leftSpeed, rightSpeed);
         } else {
           pidOut = pidCalc(courseError, pidMoveP, pidMoveI, pidMoveD);
-          leftSpeed = maxSpeed + (int16_t) (pidOut * (float) maxSpeed);
-          rightSpeed = maxSpeed - (int16_t) (pidOut * (float) maxSpeed);
+          // Calculate speed correction (up to 1.5 times at 15 degrees)
+          if (abs(courseError) > 0.2618f)
+            speedCorr = maxSpeed / 1.3f;
+          else {
+            if (abs(courseError) < 0.017f)
+              speedCorr = maxSpeed;
+            else
+              speedCorr = maxSpeed / (1 + abs(courseError) / (3.0f * 0.2618f));
+          }
+          leftSpeed = speedCorr + (int16_t) (pidOut * (float) speedCorr);
+          rightSpeed = speedCorr - (int16_t) (pidOut * (float) speedCorr);
         }
       	// Do not allow to stop one of side wheels while other is rotating
       	if ((leftSpeed == 0) && (rightSpeed !=0))
