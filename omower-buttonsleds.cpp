@@ -11,8 +11,14 @@ _hwstatus buttonsLeds::begin() {
   pinMode(PIN_BUTTON, INPUT_PULLUP);
   pinMode(PIN_BOARDLED, OUTPUT);
   digitalWrite(PIN_BOARDLED, LOW);
+#ifndef EXTLED1_INVERSE
   pinMode(PIN_EXTLED1, OUTPUT);
   digitalWrite(PIN_EXTLED1, LOW);
+#else
+  digitalWrite(PIN_EXTLED1, HIGH);
+  pinMode(PIN_EXTLED1, OUTPUT);
+  digitalWrite(PIN_EXTLED1, HIGH);
+#endif
   pinMode(PIN_EXTLED2, OUTPUT);
   digitalWrite(PIN_EXTLED2, LOW);
   pinMode(PIN_EXTLED3, OUTPUT);
@@ -31,8 +37,13 @@ boolean buttonsLeds::readSensor(numThing n) {
       return (digitalRead(PIN_BUTTON) == LOW);
     case T_BOARDLED:
       return (digitalRead(PIN_BOARDLED) == HIGH);
+#ifndef EXTLED1_INVERSE
     case T_EXTLED1:
       return (digitalRead(PIN_EXTLED1) == HIGH);
+#else
+    case T_EXTLED1:
+      return (digitalRead(PIN_EXTLED1) == LOW);
+#endif
     case T_EXTLED2:
       return (digitalRead(PIN_EXTLED2) == HIGH);
     case T_EXTLED3:
@@ -51,8 +62,13 @@ void buttonsLeds::setLED(numThing n, boolean state) {
     case T_BOARDLED:
       digitalWrite(PIN_BOARDLED, state ? HIGH : LOW);
       break;
+#ifndef EXTLED1_INVERSE
     case T_EXTLED1:
       digitalWrite(PIN_EXTLED1, state ? HIGH : LOW);
+#else
+    case T_EXTLED1:
+      digitalWrite(PIN_EXTLED1, state ? LOW : HIGH);
+#endif
       break;
     case T_EXTLED2:
       digitalWrite(PIN_EXTLED2, state ? HIGH : LOW);
