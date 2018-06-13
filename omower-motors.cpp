@@ -125,8 +125,6 @@ void motors::poll10() {
           pidOut = pidCalc(courseError, pidRollP, pidRollI, pidRollD);
           leftSpeed = -pidOut * maxSpeed;
           rightSpeed = pidOut * maxSpeed;
-          debug(L_DEBUG, (char *) F("motors::poll10: courseError %g, pidOut %g, leftSpeed %d, rightSpeed %d\n"),
-                courseError, pidOut, leftSpeed, rightSpeed);
         } else {
           pidOut = pidCalc(courseError, pidMoveP, pidMoveI, pidMoveD);
           // Calculate speed correction (up to 1.5 times at 15 degrees)
@@ -141,6 +139,8 @@ void motors::poll10() {
           leftSpeed = speedCorr + (int16_t) (pidOut * (float) speedCorr);
           rightSpeed = speedCorr - (int16_t) (pidOut * (float) speedCorr);
         }
+        debug(L_DEBUG, (char *) F("motors::poll10: courseError %g, pidOut %g, leftSpeed %d, rightSpeed %d\n"),
+              courseError, pidOut, leftSpeed, rightSpeed);
       	// Do not allow to stop one of side wheels while other is rotating
       	if ((leftSpeed == 0) && (rightSpeed !=0))
           leftSpeed = -rightSpeed * 255 / 160;
@@ -520,7 +520,7 @@ void motors::setPWM(int16_t left, int16_t right) {
     analogWrite(PIN_MOT_RIGHT_PWM, abs(right));
     #endif
     #ifdef MOT_DRIVER_DRV8825
-    digitalWrite(PIN_MOT_RIGHTFORW_DIR, HIGH);
+    digitalWrite(PIN_MOT_RIGHTFORW_DIR, LOW);
     _rightStepsDivider = DRV8825_DIV(right);
     _rightStepsCount = _leftStepsDivider;
     digitalWrite(PIN_MOT_RIGHTFORW_STEP, HIGH);
