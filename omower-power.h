@@ -102,14 +102,20 @@ private:
   boolean enableMain;
   boolean enableSolar;
 
+  // Charging is on
+  boolean chargingOn;
+
+  // Last charging cyle
+  uint32_t lastCharge;
+
   // Previous values for the filter
   uint16_t prevValue[7];
 
-  // Charge current regulator status (true - main cycle, false - increasing PWM duty from 0)
-  boolean increaseMain;
+  // Battery voltage without charging current applied
+  float battProbe;
 
-  // Booster regulator status (true - main cycle, false - increasing PWM duty from 0)
-  boolean increaseSolar;
+  // Time of last battery voltage probing
+  uint32_t lastProbe;
 
   // Last PWM duty timer values
   int lastSolarDuty;
@@ -117,6 +123,9 @@ private:
 
   // read raw value with filter
   uint16_t readRawVoltage(numThing n);
+
+  // Read raw voltage in volts
+  float readRawSensor(numThing n);
 
   // Set booster PWM duty
   void setSolar(int duty);

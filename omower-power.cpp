@@ -20,7 +20,7 @@ pwm<pwm_pin::CH_PWM_BOOST> pwmPow_boost;
 pwm<pwm_pin::CH_PWM_CC> pwmPow_charge;
 #endif
 
-#define MAX_CHARGE_PWM (CHARGE_PWM_PERIOD - CHARGE_PWM_PERIOD/4)
+#define MAX_CHARGE_PWM (CHARGE_PWM_PERIOD - CHARGE_PWM_PERIOD/8)
 
 // Set solar panel duty output
 void power::setSolar(int duty) {
@@ -32,8 +32,6 @@ void power::setSolar(int duty) {
   pwmPow_boost.set_duty(duty);
 #endif
   lastSolarDuty = duty;
-  if (duty == 0)
-    increaseSolar = true;
   debug(L_DEBUG, (char *) F("P: s %d\n"), duty);
 } // void power::setSolar(int duty)
 
@@ -47,8 +45,15 @@ void power::setMain(int duty) {
   pwmPow_charge.set_duty(duty);
 #endif
   lastMainDuty = duty;
-  if (duty == 0)
-    increaseMain = true;
+
+  // Set charge flag
+  if (duty == 0) {
+    if ((millis() - lastCharge)  > 120000)
+      chargingOn = false;
+  } else {
+    chargingOn = true;
+    lastCharge = millis();
+  }
   debug(L_DEBUG, (char *) F("P: c %d\n"), duty);
 } // void power::setMain(int duty)
 
@@ -56,48 +61,89 @@ void power::setMain(int duty) {
 void power::poll50() {
   float volts[_NUM_VOLTAGE_SENSORS];
   float currBatt, currBoost;
+  float maxCurrent;
+  float diffVolts;
   boolean canUseMain = false;
   boolean canUseSolar = false;
-  float diffCurr;
+  boolean storeProbe = false;
+  uint32_t diffProbe;
+  boolean probing = false;
 
-  // Read voltages and currents to update filter
-  for (numThing i = 0; i < 7; i++) {
-    readRawVoltage(i);
-    volts[i] = readSensor(i);
+  // Check if we have to turn off charging to probe voltage
+  if (chargingOn) {
+    diffProbe = millis() - lastProbe;
+    // Do not initiate probing right after charge is on
+    if (diffProbe > 180000) {
+      lastProbe = millis();
+      diffProbe = 0;
+    }
+    // Do probing every 60 seconds for 2 seconds
+    if (diffProbe > 60000)
+      probing = true;
+    // Check if we can safely store probed voltage
+    if (diffProbe > 60500) {
+      storeProbe = true;
+      probing = false;
+      lastProbe = millis();
+    }
   }
+
+  // Read voltages and currents to update filtered values
+  for (numThing i = 0; i < _NUM_VOLTAGE_SENSORS; i++) {
+    readRawVoltage(i);
+    if ((i == P_BATTERY) && (!chargingOn || storeProbe))
+      battProbe = readRawSensor(i);
+    volts[i] = readRawSensor(i);
+  }
+
+  // Read current sensors
   if (currentSens) {
     currBatt = currentSens->readCurrent(P_BATTERY);
     currBoost = currentSens->readCurrent(P_BOOST);
   }
 
-  debug(L_DEBUG, (char *) F("P: %g %g %g %g %g %g\n"), volts[P_BATTERY], volts[P_CHARGE],
+  debug(L_DEBUG, (char *) F("P: %g (%g) %g %g %g %g %g\n"), volts[P_BATTERY], battProbe, volts[P_CHARGE],
         volts[P_BOOST], volts[P_SOLAR], currBoost, currBatt);
+
   canUseMain = false;
   canUseSolar = false;
 
   // Check if battery need charging, then that we have charge port voltage - use it then instead solar panel
-  if (volts[P_BATTERY] < maxBatteryVoltage) {
+  if ((millis() > 30000) && !probing && (volts[P_BATTERY] < maxBatteryVoltage)) {
     if (volts[P_CHARGE] > volts[P_BATTERY])
       canUseMain = true;
     else {
       // Check if solar voltage is enough
-      if (volts[P_SOLAR] > minSolarVoltage - 2.0f)
+      if (volts[P_SOLAR] > (minSolarVoltage - 2.0f))
         canUseSolar = true;
+    }
+
+    // Lower maximum charge current when we're almost done
+    maxCurrent = maxChargeCurrent;
+    diffVolts = (maxBatteryVoltage - volts[P_BATTERY]) / maxBatteryVoltage;
+    if (diffVolts < 0.013f)
+      maxCurrent = maxChargeCurrent / 8;
+    else {
+      if (diffVolts < 0.027f)
+        maxCurrent = maxChargeCurrent / 4;
+      else
+        if (diffVolts < 0.041f) 
+          maxCurrent = maxChargeCurrent / 2;
     }
   }
 
   // Reset main duty timer if we're off
-  if ((!enableMain || !canUseMain) && !canUseSolar && (lastMainDuty > 0))
+  if ((!enableMain || !canUseMain) && (!enableSolar || !canUseSolar))
     setMain(0);
   
   // Reset solar booster duty timer
-  if ((!enableSolar || !canUseSolar) && (lastSolarDuty > 0))
+  if (!enableSolar || !canUseSolar)
     setSolar(0);
 
   // Charging from charge port, just regulate current output
   if (canUseMain) {
     if ((volts[P_CHARGE] > (volts[P_BATTERY] + minDiffVoltage))
-        && (volts[P_BATTERY] < maxBatteryChargeStart)) {
+        && (chargingOn || (volts[P_BATTERY] < maxBatteryChargeStart))) {
       // Charge current protection
       if (currBoost > (maxChargeCurrent * 1.5)) {
         debug(L_INFO, (char *) F("power::poll50: Too high charge curret %f, switching off charge\n"),
@@ -105,8 +151,7 @@ void power::poll50() {
         setMain(0);
       } else {
         // Regulate output
-        diffCurr = abs(maxChargeCurrent - diffCurr);
-        if (currBoost < maxChargeCurrent)
+        if (currBoost < maxCurrent)
           lastMainDuty++;
         else
           lastMainDuty--;
@@ -117,7 +162,7 @@ void power::poll50() {
   }
 
   // Charge from solar panel, regulate booster and current
-  if (canUseSolar && (volts[P_BATTERY] < maxBatteryChargeStart)) {
+  if (canUseSolar && (chargingOn || (volts[P_BATTERY] < maxBatteryChargeStart))) {
     // Boost voltage more if needed
     if (volts[P_BOOST] < (volts[P_BATTERY] + minDiffVoltage) * 1.1)
       lastSolarDuty++;
@@ -138,7 +183,7 @@ void power::poll50() {
       // Booster output is sufficient, decrease current output otherwise
       if (volts[P_BOOST] > (volts[P_BATTERY] + minDiffVoltage)) {
         // Solar panel current is not more than half of maximum charge current to prevent booster overload
-        if (currBoost > (maxChargeCurrent / 2))
+        if (currBoost > (maxCurrent / 2))
           lastMainDuty--;
         else
           lastMainDuty++;
@@ -158,7 +203,7 @@ void power::poll50() {
 #ifndef NO_FAN_CONTROL
   // Check power save mode and disable/enable fan when no charge
   if (powerSave) {
-    if (canUseSolar || canUseMain)
+    if (chargingOn)
       pwmPow_fan.set_duty(FAN_PWM_PERIOD / 2);
     else
       pwmPow_fan.set_duty(0);
@@ -181,8 +226,6 @@ power::power() {
   currentSens = NULL;
   enableMain = false;
   enableSolar = false;
-  increaseMain = true;
-  increaseSolar = true;
 
   minDiffVoltage = 5.0;
   maxBatteryVoltage = 14.6;
@@ -191,6 +234,8 @@ power::power() {
   minSolarVoltage = 12.0;
   maxChargeCurrent = 0.5;
   powerSave = false;
+  lastProbe = 0;
+  chargingOn = false;
 } // power::power()
 
 // Enable charging from main charge port
@@ -241,12 +286,20 @@ numThing power::numThings() {
   return 7;
 } // numThing power::numThings()
 
-float power::readSensor(numThing n) {
+float power::readRawSensor(numThing n) {
   if (n < P_3V3)
     return prevValue[n] * kVoltage;
   else
     return prevValue[n] * kVoltageExt;
-} // float power::readVoltage(numThing n)
+} // float power::readRawSensor(numThing n)
+
+// Report true battery voltage when charging is on
+float power::readSensor(numThing n) {
+  if ((n == P_BATTERY) && chargingOn)
+    return battProbe;
+
+  return readRawSensor(n);
+} // float power::readSensor(numThing n)
 
 uint16_t power::readRawVoltage(numThing n) {
   uint16_t value;
