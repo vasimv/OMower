@@ -315,6 +315,7 @@ boolean imu::checkMPU9250() {
   i2cRead(bus, MPU_ADDR, MPU_WHO_AM_I, &tmp, 1);
   if (tmp != MPU9250_ID) {
     debug(L_WARNING, (char *) F("Bad id from MPU9250/MPU6500 (%hd)\n"), tmp);
+    errorStatus = 1;
     addError(2);
     return false;
   }
@@ -336,6 +337,7 @@ boolean imu::checkMPU9250() {
   res = recvAK8963(AK_WHO_AM_I, &tmp, 1);
   if (tmp != AK8963_ID) {
     debug(L_WARNING, (char *) F("Bad id from MPU9250/AK8963 (%hd/%hd)\n"), tmp, res);
+    errorStatus = 1;
     addError(1);
     return false;
   }
@@ -523,6 +525,7 @@ boolean imu::readMPU6500() {
   // Read FIFO counter and calculate number of samples
   if (i2cRead(bus, MPU_ADDR, MPU_FIFO_COUNTH, (uint8_t *) &tmp, 2) != 2) {
     debug(L_NOTICE, (char *) F("Couldn't read from MPU6500!\n"));
+    errorStatus = 2;
     addError(2);
     return false;
   }
@@ -547,6 +550,7 @@ boolean imu::readMPU6500() {
     tmp = i2cRead(bus, MPU_ADDR, MPU_FIFO_R_W, (uint8_t *) data, 14);
     if (tmp != 14) { 
       debug(L_NOTICE, (char *) F("Couldn't read MPU6500 data (%hd)\n"), tmp);
+      errorStatus = 2;
       addError(2);
       return false;
     }
@@ -771,6 +775,7 @@ boolean imu::readFXOS8700() {
   while (1) {
     if ((res = i2cRead(bus, FXOS_ADDR, FXOS_STATUS, (uint8_t *) &data, 7)) != 7) {
       debug(L_DEBUG, (char *) F("No data read from accelerometer FXOS8700 (%hd)!\n"), res);
+      errorStatus = 2;
       addError(2);
       return false;
     }
@@ -798,6 +803,7 @@ boolean imu::readFXOS8700() {
   // Read magnitometer data
   if ((res = i2cRead(bus, FXOS_ADDR, FXOS_M_OUT_X_MSB, data, 6)) != 6) {
     debug(L_DEBUG, (char *) F("No data read from magnetometer FXOS8700 (%hd)!\n"), res);
+    errorStatus = 2;
     addError(1);
     return false;
   }
@@ -914,6 +920,7 @@ boolean imu::initFXOS8700() {
   i2cRead(bus, FXOS_ADDR, FXOS_WHOAMI, &tmp, 1);
   if (tmp != FXOS_ID) {
     debug(L_WARNING, (char *) F("Wrong or ID from FXOS8700 (%hu)!\n"), tmp);
+    errorStatus = 1;
     addError(2);
     return false;
   }
@@ -958,6 +965,7 @@ boolean imu::readFXAS21002() {
     // Read data
     if (i2cRead(bus, FXAS_ADDR, FXAS_STATUS, (uint8_t *) &data, sizeof(data)) != sizeof(data)) {
       debug(L_DEBUG, (char *) F("Can't read from FXAS21002\n"));
+      errorStatus = 2;
       addError(3);
      return false;
     }
@@ -996,6 +1004,7 @@ boolean imu::initFXAS21002() {
   i2cRead(bus, FXAS_ADDR, FXAS_WHOAMI, &tmp, 1);
   if (tmp != FXAS_ID) {
     debug(L_WARNING, (char *) F("Wrong or can't read ID from FXAS21002 (%hu)!\n"), tmp);
+    errorStatus = 1;
     addError(3);
     return false;
   }
@@ -1125,6 +1134,7 @@ void imu::readBMP085() {
     res = i2cRead(bus, BMP085, 0xF6, (uint8_t *) &ut, 2);
     if (res != 2) {
       debug(L_NOTICE, (char *) F("imu::readBMP085: res %d\n"), res);
+      errorStatus = 2;
       addError(4);
     }
     swapBytes((uint8_t *) &ut);
@@ -1159,6 +1169,7 @@ void imu::initBMP085() {
     res = i2cRead(bus, BMP085, addr, p, 2);
     if (res != 2) {
       debug(L_NOTICE, (char *) F("imu::initBMP085: res %d\n"), res);
+      errorStatus = 1;
       addError(4);
     }
     p += 2;
@@ -1246,6 +1257,7 @@ void imu::readADXL345B() {
   // Get numbers of samples in the FIFO
   if (res = i2cRead(bus, ADXL345B, 0x39, (uint8_t *) buf, 1) != 1) {
     debug(L_NOTICE, (char *) F("imu::readADXL345B: res %d\n"), res);
+    errorStatus = 2;
     addError(2);
     return;
   }
@@ -1255,9 +1267,10 @@ void imu::readADXL345B() {
   // Read whole fifo buffer
   for (uint8_t i = 0; i < numFifo; i++) {
     if ((res = i2cRead(bus, ADXL345B, 0x32, (uint8_t *) buf, 6)) != 6) {
-     debug(L_NOTICE, (char *) F("imu::readADXL345B: res %d\n"), res);
-     addError(2);
-     return;
+      debug(L_NOTICE, (char *) F("imu::readADXL345B: res %d\n"), res);
+      errorStatus = 2;
+      addError(2);
+      return;
     }
     sX += (int16_t) (((uint16_t) buf[1]) << 8 | buf[0]);
     sY += (int16_t) (((uint16_t) buf[3]) << 8 | buf[2]);
@@ -1290,6 +1303,7 @@ void imu::readHMC5883L() {
   if ((res = i2cRead(bus, HMC5883L, 0x03, (uint8_t *) buf, 6)) != 6) {
     debug(L_NOTICE, "imu::readHMC5883L: res %d\n", res);
     addError(1);
+    errorStatus = 1;
     return;
   }
   x = (int16_t) (((uint16_t) buf[0]) << 8 | buf[1]);
@@ -1467,6 +1481,7 @@ _hwstatus imu::begin() {
 _status imu::init(nvmem *saveMem) {
   debug(L_INFO, (char *) F("imu::init\n"));
 
+  errorStatus = 0;
   adc11617Disable = true;
   com.x = com.y = com.z = acc.x = acc.y = acc.z = gyro.x = gyro.y = gyro.z = 0.0f;
 
