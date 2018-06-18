@@ -122,10 +122,12 @@ void motors::poll10() {
       } else {
         // Calculate speed
         if (curStatus == _moveStatus::ROLL_NAV) {
+          // Turning at one place
           pidOut = pidCalc(courseError, pidRollP, pidRollI, pidRollD);
           leftSpeed = -pidOut * maxSpeed;
           rightSpeed = pidOut * maxSpeed;
         } else {
+          // Moving
           pidOut = pidCalc(courseError, pidMoveP, pidMoveI, pidMoveD);
           // Calculate speed correction (up to 1.5 times at 15 degrees)
           if (abs(courseError) > 0.2618f)
@@ -136,8 +138,12 @@ void motors::poll10() {
             else
               speedCorr = maxSpeed / (1 + abs(courseError) / (3.0f * 0.2618f));
           }
-          leftSpeed = speedCorr + (int16_t) (pidOut * (float) speedCorr);
-          rightSpeed = speedCorr - (int16_t) (pidOut * (float) speedCorr);
+          leftSpeed = speedCorr;
+          rightSpeed = speedCorr;
+          if (pidOut > 0)
+            rightSpeed = speedCorr - (int16_t) (pidOut * (float) speedCorr);
+          else
+            leftSpeed = speedCorr + (int16_t) (pidOut * (float) speedCorr);
         }
         debug(L_DEBUG, (char *) F("motors::poll10: courseError %g, pidOut %g, leftSpeed %d, rightSpeed %d\n"),
               courseError, pidOut, leftSpeed, rightSpeed);
