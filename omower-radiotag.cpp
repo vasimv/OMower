@@ -7,13 +7,20 @@
 #include <omower-modbus.h>
 #include <string.h>
 
-_status radiotag::init() {
-  validCoords = false;
-  lastReceived = 0;
+// Hardware initialization
+_hwstatus radiotag::begin() {
+  passGps = NULL;
   imuSens = NULL;
   serialPorts = NULL;
   tagPort = -1;
   maxTimeout = 400;
+  return _hwstatus::ONLINE;
+} // _hwstatus radiotag::begin() {
+
+// Software (re)initialization
+_status radiotag::init() {
+  validCoords = false;
+  lastReceived = 0;
   cntBuf = 0;
   return _status::NOERR;
 } // _status radiotag::init()
@@ -64,6 +71,9 @@ void radiotag::poll10() {
             validCoords = true;
             lastReceived = millis();
             debug(L_DEBUG, (char *) F("radiotag::poll10: received coords %ld %ld\n"), coordX, coordY);
+            // Send coordinates to the GPS module in pass-through mode
+            if (passGps != NULL)
+              passGps->setCoords(coordY / KCORR_CM_TO_COORD, coordX / KCORR_CM_TO_COORD, 129, 0, 0, 0, 0, 0, 0);
           }
           // Remove packet from the buffer
           if (cntBuf > 25) {

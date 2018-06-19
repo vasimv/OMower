@@ -6,6 +6,7 @@
 
 #include <omower-root.h>
 #include <omower-imu.h>
+#include <omower-gps.h>
 #include <omower-serial.h>
 #include <stdint.h>
 
@@ -32,13 +33,23 @@ public:
   // if set to NULL (default) - will use radiotag's calculated course (very rough)
   imu *imuSens;
 
+  // GPS object for pass-through mode
+  // If set the radiotag module will sent all received coordinates
+  // to the GPS module like as they received from a GPS receiver
+  // Note, that may cause conflicts when both GPS and radiotags receivers
+  // are present
+  gps *passGps;
+
   // Serial object for reading messages from radiotag
   serial *serialPorts;
 
   // Number of serial port radiotag connected to
   numThing tagPort;
 
-  // Initialization
+  // Hardware initialization
+  _hwstatus begin();
+
+  // (re)Initialization
   _status init();
  
   // returns soft error status if too long time without GPS data
