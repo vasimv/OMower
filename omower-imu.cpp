@@ -1475,6 +1475,7 @@ _hwstatus imu::softError() {
 _hwstatus imu::begin() {
   debug(L_DEBUG, (char *) F("imu::begin\n"));
   compassCalibrated = gyroCalibrated = baroCalibrated = accelCalibrated = false;
+  oSave = NULL;
 } // _hwstatus imu::begin()
 
 // (re-)Initialization of IMU
@@ -1485,9 +1486,15 @@ _status imu::init(nvmem *saveMem) {
   adc11617Disable = true;
   com.x = com.y = com.z = acc.x = acc.y = acc.z = gyro.x = gyro.y = gyro.z = 0.0f;
 
-  oSave = saveMem;
-  if (oSave) {
-    nvmemAddr = oSave->curAddr;
+  // Check if we have set oSave already (re-init)
+  if (!oSave) {
+    oSave = saveMem;
+    if (oSave) {
+      nvmemAddr = oSave->curAddr;
+      loadCalib();
+    }
+  } else {
+    oSave->curAddr = nvmemAddr;
     loadCalib();
   }
 
