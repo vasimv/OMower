@@ -33,6 +33,7 @@
 #define MPU_ADDR 0x68
 #define AK_ADDR 0x0C
 #define MPU9250_ID 0x71
+#define MPU9255_ID 0x73
 #define AK8963_ID 0x48
 
 #define MPU_ARES 16384.0f
@@ -169,13 +170,23 @@ void imu::poll50() {
     return;
   #endif
 
+  #ifdef IMU_FLIP
+  // Flip around X axis
+  com.y = -com.y;
+  com.z = -com.z;
+  acc.y = -acc.y;
+  acc.z = -acc.z;
+  gyro.y = -gyro.y;
+  gyro.z = -gyro.z;
+  #endif
+
   // Calculate time from previous reading
   now = millis();
   loopTime = (float) (now - lastTime) / 1000.0f;
   lastTime = now;
 
   // debug(L_DEBUG, (char *) F("IR: %.3f %.3f %.3f %.3f %.3f %.3f %.3f %.3f %.3f %.3f %hu\n"), acc.x, acc.y, acc.z,
-  //      com.x, com.y, com.z, gyro.x, gyro.y, gyro.z, loopTime, comSelfTest);
+  //       com.x, com.y, com.z, gyro.x, gyro.y, gyro.z, loopTime, comSelfTest);
   #ifdef MADGWICK_FILTER
   // Calculate roll, pitch and yaw
   madgwickUpdate();
@@ -310,10 +321,10 @@ boolean imu::checkMPU9250() {
   uint8_t res;
 
   // Reset FIFO and I2C modules
-  i2cWriteOne(bus,MPU_ADDR, MPU_USER_CTRL, 0x06);
+  i2cWriteOne(bus,MPU_ADDR, MPU_USER_CTRL, 0x07);
   delay(10);
   i2cRead(bus, MPU_ADDR, MPU_WHO_AM_I, &tmp, 1);
-  if (tmp != MPU9250_ID) {
+  if ((tmp != MPU9250_ID) && (tmp != MPU9255_ID)) {
     debug(L_WARNING, (char *) F("Bad id from MPU9250/MPU6500 (%hd)\n"), tmp);
     errorStatus = 1;
     addError(2);
@@ -332,7 +343,7 @@ boolean imu::checkMPU9250() {
   sendAK8963(AK_AK8963_CNTL2, 1);
   i2cWriteOne(bus, MPU_ADDR, MPU_PWR_MGMT_1, MPU_CLOCK_SEL_PLL);
   i2cWriteOne(bus, MPU_ADDR, MPU_PWR_MGMT_2, 0);
-  i2cWriteOne(bus, MPU_ADDR, MPU_USER_CTRL, MPU_I2C_MST_EN);
+  i2cWriteOne(bus, MPU_ADDR, MPU_USER_CTRL, MPU_I2C_MST_EN | 0x40);
   i2cWriteOne(bus, MPU_ADDR, MPU_I2C_MST_CTRL, MPU_I2C_MST_CLK);
   res = recvAK8963(AK_WHO_AM_I, &tmp, 1);
   if (tmp != AK8963_ID) {
@@ -386,7 +397,7 @@ void imu::initMPU6500() {
   // Set accelerometer full-scale range configuration (2G)
   i2cRead(bus, MPU_ADDR, MPU_ACCEL_CONFIG, &c, 1); // get current ACCEL_CONFIG register value
   // c = c & ~0xE0; // Clear self-test bits [7:5] 
-  c = c & ~0x18;  // Clear AFS bits [4:3]
+  c = c & ~0xF8;  // Clear AFS bits [4:3]
   i2cWriteOne(bus, MPU_ADDR, MPU_ACCEL_CONFIG, c); // Write new ACCEL_CONFIG register value
 
   // Set accelerometer sample rate configuration
@@ -411,29 +422,6 @@ void imu::initMPU6500() {
   i2cWriteOne(bus, MPU_ADDR, MPU_FIFO_EN, 0xF8);     // Enable gyro and accelerometer sensors for FIFO
   i2cWriteOne(bus, MPU_ADDR, MPU_I2C_MST_CTRL, MPU_I2C_MST_CLK);
   delay(50);
-
-  // Rewrite calibration values
-  accel_bias_reg[0] = accOfs.x;
-  accel_bias_reg[1] = accOfs.y;
-  accel_bias_reg[2] = accOfs.z;
-
-  data[0] = (accel_bias_reg[0] >> 8) & 0xFF;
-  data[1] = (accel_bias_reg[0])      & 0xFF;
-  // preserve temperature compensation bit when writing back to accelerometer bias registers
-  data[2] = (accel_bias_reg[1] >> 8) & 0xFF;
-  data[3] = (accel_bias_reg[1])      & 0xFF;
-  // preserve temperature compensation bit when writing back to accelerometer bias registers
-  data[4] = (accel_bias_reg[2] >> 8) & 0xFF;
-  data[5] = (accel_bias_reg[2])      & 0xFF;
-  // preserve temperature compensation bit when writing back to accelerometer bias registers
-
-  // Push accelerometer biases to hardware registers
-  i2cWriteOne(bus, MPU_ADDR, MPU_XA_OFFSET_H, data[0]);
-  i2cWriteOne(bus, MPU_ADDR, MPU_XA_OFFSET_L, data[1]);
-  i2cWriteOne(bus, MPU_ADDR, MPU_YA_OFFSET_H, data[2]);
-  i2cWriteOne(bus, MPU_ADDR, MPU_YA_OFFSET_L, data[3]);
-  i2cWriteOne(bus, MPU_ADDR, MPU_ZA_OFFSET_H, data[4]);
-  i2cWriteOne(bus, MPU_ADDR, MPU_ZA_OFFSET_L, data[5]);
 
   gyro_bias[0] = gyroOfs.x;
   gyro_bias[1] = gyroOfs.y;
@@ -571,9 +559,16 @@ boolean imu::readMPU6500() {
   acc.x /= (float) count;
   acc.y /= (float) count;
   acc.z /= (float) count;
+  #ifndef NO_CALIB_ACCEL
+  acc.x -= accOfs.x;
+  acc.y -= accOfs.y;
+  acc.z -= accOfs.z;
+  #endif
   gyro.x /= (float) count;
   gyro.y /= (float) count;
   gyro.z /= (float) count;
+  debug(L_DEBUG, (char *) F("acc: %.2f %.2f %.2f gyro: %.2f %.2f %.2f\n"),
+        acc.x, acc.y, acc.z, gyro.x, gyro.y, gyro.z);
   filtTemp /= (float) count;
   return true;
 } // boolean imu::readMPU6500()
@@ -594,7 +589,7 @@ void imu::readAK8963() {
       x= -(int16_t) (((int16_t) data[4] << 8) | data[3]);
       z= -(int16_t) (((int16_t) data[6] << 8) | data[5]);
   } else {
-    debug(L_DEBUG, (char *) F("No data read from AK8963!\n"));
+    debug(L_DEBUG, (char *) F("No valid data read from AK8963!\n"));
     return;
   }
 
@@ -611,9 +606,9 @@ void imu::readAK8963() {
   if (z > comMax.z)
     comMax.z = z;
   if (compassCalibrated) {
-    x -= comOfs.x;
-    y -= comOfs.y;
-    z -= comOfs.z;
+    x = x - comOfs.x;
+    y = y - comOfs.y;
+    z = z - comOfs.z;
     x /= comScale.x * 0.5f;
     y /= comScale.y * 0.5f;
     z /= comScale.z * 0.5f;
@@ -710,33 +705,6 @@ void imu::calibMPU6500() {
   else
     accel_bias[2] += (int32_t) accelsensitivity;
    
-  // Construct the accelerometer biases for push to the hardware accelerometer bias registers.
-  // These registers contain factory trim values which must be added to the calculated accelerometer
-  // biases; on boot up these registers will hold non-zero values. In addition, bit 0 of the lower
-  // byte must be preserved since it is used for temperature compensation calculations. Accelerometer
-  // bias registers expect bias input as 2048 LSB per g, so that the accelerometer biases calculated
-  // above must be divided by 8.
-  int32_t accel_bias_reg[3] = {0, 0, 0}; // A place to hold the factory accelerometer trim biases
-  i2cRead(bus, MPU_ADDR, MPU_XA_OFFSET_H, data, 2); // Read factory accelerometer trim values
-  accel_bias_reg[0] = (int32_t) (((int16_t)data[0] << 8) | data[1]);
-  i2cRead(bus, MPU_ADDR, MPU_YA_OFFSET_H, data, 2);
-  accel_bias_reg[1] = (int32_t) (((int16_t)data[0] << 8) | data[1]);
-  i2cRead(bus, MPU_ADDR, MPU_ZA_OFFSET_H, data, 2);
-  accel_bias_reg[2] = (int32_t) (((int16_t)data[0] << 8) | data[1]);
-  
-  // Define array to hold mask bit for each accelerometer bias axis
-  uint8_t mask_bit[3];
-  
-  for(ii = 0; ii < 3; ii++)
-    // If temperature compensation bit is set, record that fact in mask_bit
-    mask_bit[ii] = (uint8_t) (accel_bias_reg[ii] & 0x1);
-  
-  // Construct total accelerometer bias, including calculated average accelerometer bias from above
-  // Subtract calculated averaged accelerometer bias scaled to 2048 LSB/g (16 g full scale)
-  accel_bias_reg[0] -= (accel_bias[0]/8);
-  accel_bias_reg[1] -= (accel_bias[1]/8);
-  accel_bias_reg[2] -= (accel_bias[2]/8);
-  
   // Saving calibration values to load into offset registers
   gyroOfs.x = gyro_bias[0];
   gyroOfs.y = gyro_bias[1];
@@ -745,13 +713,11 @@ void imu::calibMPU6500() {
   accScale.y = 16384.0f;
   accScale.z = 16384.0f;
 #ifdef NO_CALIB_ACCEL
-  accOfs.x = mask_bit[0];
-  accOfs.y = mask_bit[1];
-  accOfs.z = mask_bit[2];
+  accOfs.x = accOfs.y = accOfs.z = 0;
 #else
-  accOfs.x = (accel_bias_reg[0] & 0xFFFE) | mask_bit[0];
-  accOfs.y = (accel_bias_reg[1] & 0xFFFE) | mask_bit[1];
-  accOfs.z = (accel_bias_reg[2] & 0xFFFE) | mask_bit[2];
+  accOfs.x = accel_bias[0];
+  accOfs.y = accel_bias[1];
+  accOfs.z = accel_bias[2];
 #endif
   gyroCalibrated = true;
   accelCalibrated = true;
@@ -1898,6 +1864,8 @@ _status imu::stopCompassCalib() {
   comScale.z = zrange;
   debug(L_NOTICE, (char *) F("imu::stopCompassCalib: scale %f %f %f offs %f %f %f\n"),
         comScale.x, comScale.y, comScale.z, comOfs.x, comOfs.y, comOfs.z);
+  debug(L_NOTICE, (char *) F("imu::stopCompassCalib: min %f %f %f max %f %f %f\n"),
+        comMin.x, comMin.y, comMin.z, comMax.x, comMax.y, comMax.z);
   compassCalibrated = true;
   return _status::NOERR;
 } // _status imu::stopCompassCalib()
