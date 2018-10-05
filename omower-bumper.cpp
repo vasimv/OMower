@@ -24,8 +24,8 @@ _status bumper::init() {
   // Set pins mode
   pinMode(PIN_BUMP_LEFTFORW, INPUT_PULLUP);
   pinMode(PIN_BUMP_RIGHTFORW, INPUT_PULLUP);
-  pinMode(PIN_BUMP_LEFTFORW, INPUT_PULLUP);
-  pinMode(PIN_BUMP_LEFTFORW, INPUT_PULLUP);
+  pinMode(PIN_BUMP_LEFTBACK, INPUT_PULLUP);
+  pinMode(PIN_BUMP_RIGHTBACK, INPUT_PULLUP);
 
   for (int i = 0; i < BUMPERS_NUM; i++) {
     bumperCount[i] = 0;
