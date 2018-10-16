@@ -29,6 +29,9 @@
 // (they will be written sequentially to prevent wear-out)
 #define NVMEM_BLOCKS 32
 
+// Invert external LED #1
+// #define EXTLED1_INVERSE
+
 // Channel&pin definition for pwm_lib
 #define CH_PWM_A PWML0_PC2
 #define CH_PWM_B PWML1_PC4
@@ -39,11 +42,20 @@
 #define CH_PWM_BOOST PWML6_PC23
 #define CH_PWM_CC PWML7_PC24
 
+// Flip IMU module around X axis (bottom of module is up)
+#define IMU_FLIP
+
+// Rotate IMU module by 180 degrees
+// #define IMU_ROTATE_180
+
 // GY-80 module as IMU
-#define IMU_GY80
+// #define IMU_GY80
 
 // MPU-9250 (MPU6500+AK8963 on signle chip) as IMU
-// #define IMU_MPU9250
+#define IMU_MPU9250
+
+// Use I2C passthrough mode to access AK8963, may not work properly (instead it'll use slower I2C master interface if not defined)
+#define IMU_MPU6500_PASSTHROUGH
 
 // FXOS8700+FXAS21002 board FRDM-STBC-AGM01
 // #define IMU_FXOS8700
@@ -53,7 +65,7 @@
 #define MADGWICK_FILTER 
 
 // Use Kalman filter for IMU data
-// #define KALMAN_FILTER
+//#define KALMAN_FILTER
 
 // Invert bumper's signal (LOW - obstacle)
 #define BUMPERS_INVERT
@@ -223,6 +235,8 @@
 
 // SCL pins definition (for force reset at init)
 #define PIN_SCL 21
+#define PIN_SDA 20
 #define PIN_SCL1 71
+#define PIN_SDA1 70
 
 #endif

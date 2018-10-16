@@ -39,11 +39,17 @@
 
 #define BUMPERS_NUM 0
 
+// Flipped IMU (bottom on top)
+// #define IMU_FLIP
+
 // GY-80 module as IMU
 // #define IMU_GY80
 
-// MPU-9250 (MPU6500+AK8963 on signle chip) as IMU
+// MPU-9250/9255 (MPU6500+AK8963 on signle chip) as IMU
 // #define IMU_MPU9250
+
+// Use I2C passthrough mode to access AK8963, may not work properly (instead it'll use slower I2C master interface if not defined)
+// #define IMU_MPU6500_PASSTHROUGH
 
 // FXOS8700+FXAS21002 board FRDM-STBC-AGM01
 #define IMU_FXOS8700
@@ -54,9 +60,6 @@
 
 // Use Kalman filter for IMU data
 // #define KALMAN_FILTER
-
-// Don't calibrate accelerometer at start
-#define NO_CALIB_ACCEL
 
 // Disable adc channel 7 as it used as REF for IHM12A1
 #define NO_ADC_CHANNEL7
@@ -204,8 +207,10 @@
 // Shutdown relay pin
 #define PIN_SHUTDOWN 32
 
-// SCL pins definition (for force reset at init)
+// SCL/SDA pins definition (for force reset at init)
 #define PIN_SCL 21
+#define PIN_SDA 20
 #define PIN_SCL1 71
+#define PIN_SDA1 70
 
 #endif
