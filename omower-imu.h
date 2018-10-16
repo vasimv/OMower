@@ -280,7 +280,7 @@ private:
   void readAK8963();
 
   // Calibration stuff for MPU6500
-  void calibMPU6500();
+  void calibMPU6500(boolean onlyGyro);
 #endif // IMU_MPU9250
 
 
