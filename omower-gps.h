@@ -13,6 +13,20 @@
 // koefficient for centimeters to coordinates change
 #define KCORR_CM_TO_COORD 1.11318845f
 
+// Distance to next target point in split way mode (meters)
+#define SPLIT_DISTANCE 3.0f
+
+// Compass autocorrection - it'll calculate compass offset after driving half of distance to target point and compensate
+// All direction are grouped in 4 sectors, 90 degrees each
+
+// Disable the autocorrection
+// #define DISABLE_COMPASS_AUTOCORRECTION
+
+// All direction are grouped in 4 sectors, 90 degrees each
+#define AUTOCORR_SECTORS 4
+// Sector's angle, in radians
+#define AUTOCORR_SECTOR_ANGLE ((M_PI * 2) / (AUTOCORR_SECTORS - 1))
+
 class gps : public navThing {
 public:
   // Settings variables:
@@ -38,6 +52,9 @@ public:
   // Raw coordinates from GPS (without odometry correction but with correction of antenna position)
   int32_t latitudeRaw;
   int32_t longitudeRaw;
+
+  // Offsets for all sectors
+  float offsetSectors[AUTOCORR_SECTORS];
 
   // Approximate speed (in cm per second)
   uint16_t speed;
@@ -94,6 +111,12 @@ public:
   // Calculate distance to coordinates (in meters)
   float calcDist(int32_t latitude, int32_t longitude);
 
+  // Course between points
+  static float bearing(int32_t lat1, int32_t lon1, int32_t lat2, int32_t lon2);
+
+  // Distance between points
+  static float distance(int32_t lat1, int32_t lon1, int32_t lat2, int32_t lon2);
+
   // Calculate coordinates of point on line to the target with current
   // coordinates and distance from it
   void calcPoint(float dist, int32_t &latitudeP, int32_t &longitudeP,
@@ -124,16 +147,34 @@ private:
   // Odometry ticks at last coordinates receive
   int32_t leftTicks, rightTicks;
 
-  // Course between points
-  float bearing(int32_t lat1, int32_t lon1, int32_t lat2, int32_t lon2);
+  // Autocorrection variables:
+  // Proposed direction of the movement
+  float startDir;
 
-  // Distance between points
-  float distance(int32_t lat1, int32_t lon1, int32_t lat2, int32_t lon2);
+  // Coordinates of the start point
+  int32_t latS, lonS;
+
+  // Flag variables for compass autocorrection
+  boolean startAutocorrection, endAutocorrection, flagAutocorrection;
 
   // Correct precision coordinates by antenna's position on the robot
   void correctCoords();
 
   // Reset odometry stats for precision correction
   void resetOdometryTicks();
+
+  // Autocorrection functions
+  // Initialise autocorrection calculation (must be called at start of measured movement)
+  // latStart, lonStart - coordinates of robots at start of movement
+  // latEnd, lonEnd - coordinates of destination point
+  void initAutocorr(int32_t latStart, int32_t lonStart, int32_t latEnd, int32_t lonEnd);
+
+  // Calculate compass autocorrection offset (must be called at middle of measured movement)
+  // lat, lon - current robot's coordinates
+  // Updates offsetSectors array
+  void calcOffset(int32_t lat, int32_t lon);
+
+  // Calculate autocorrection sector from angle
+  uint8_t calcSector(float angle);
 };
 #endif

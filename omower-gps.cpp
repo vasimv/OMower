@@ -13,12 +13,15 @@
 gps::gps() {
   imuSens = NULL;
   odoSens = NULL;
+  startAutocorrection = endAutocorrection = flagAutocorrection = false;
 } // gps::gps()
 
 _status gps::init() {
   numSats = 0;
   lastReceived = 0;
   lastPrecision = 0;
+  for (int i = 0; i < AUTOCORR_SECTORS; i++)
+    offsetSectors[i] = 0;
   return _status::NOERR;
 } // _status gps::init()
 
@@ -146,7 +149,9 @@ void gps::setTarget(int32_t latitudeDest, int32_t longitudeDest, boolean precisi
     latitudeTarg = latitudeLast;
     longitudeTarg = longitudeLast;
   } else 
-    calcPoint(1.0f, latitudeTarg, longitudeTarg, latitudeDest, longitudeDest);
+    // First split way point should be closer after turn
+    calcPoint(SPLIT_DISTANCE / 2, latitudeTarg, longitudeTarg, latitudeDest, longitudeDest);
+  startAutocorrection = endAutocorrection = flagAutocorrection = false;
 } // void gps::setTarget(int32_t latitudeDest, int32_t longitudeDest, boolean precisionOnly, boolean splitWay)
 
 // Course error for gps navigation
@@ -169,18 +174,25 @@ float gps::readCourseError() {
       debug(L_INFO, (char *) F("gps::readCourseError: reached destination (cur %ld %ld)\n"), latitude, longitude);
       if ((latitudeTarg == latitudeLast) && (longitudeTarg == longitudeLast)) {
         destReached = true;
+        flagAutocorrection = startAutocorrection = endAutocorrection = false;
         return -1000;
       } else {
         // Split way, we've reached next point and calculating new one
         // Check if we're close to the end already or just make new point
-        if (abs(distance(latitudeTarg, longitudeTarg, latitudeLast, longitudeLast)) < 3.0f) {
+        if (abs(distance(latitudeTarg, longitudeTarg, latitudeLast, longitudeLast)) < SPLIT_DISTANCE) {
           latitudeTarg = latitudeLast;
           longitudeTarg = longitudeLast;
-        } else 
-          calcPoint(3.0f, latitudeTarg, longitudeTarg, latitudeLast, longitudeLast);
-          debug(L_INFO, (char *) F("gps::readCourseError: new waypoint: %ld %ld\n"), latitudeTarg, longitudeTarg);
+        } else {
+          calcPoint(SPLIT_DISTANCE, latitudeTarg, longitudeTarg, latitudeLast, longitudeLast);
+          startAutocorrection = flagAutocorrection = true;
+        }
+        debug(L_INFO, (char *) F("gps::readCourseError: new waypoint: %ld %ld\n"), latitudeTarg, longitudeTarg);
       }
     }
+  } else {
+    // Check if we have to finish autocorrection cycle
+    if (flagAutocorrection && (curDist < (SPLIT_DISTANCE / 2)) && (latitudeLast != longitudeTarg) && (longitudeLast != longitudeTarg))
+      endAutocorrection = true;
   }
   lastDist = curDist;
   // Temporary stop if no precision info or no info at all
@@ -193,6 +205,10 @@ float gps::readCourseError() {
 
   // Calculate course correction
   degreeDestF = bearing(latitude, longitude, latitudeTarg, longitudeTarg);  
+
+#ifndef DISABLE_COMPASS_AUTOCORRECTION
+  degreeDestF = imu::scalePI(degreeDestF + offsetSectors[calcSector(degreeDestF)]);
+#endif
 
   float d = imu::scalePI(degreeDestF - degreeCurF);
   debug(L_INFO, (char *) F("gps::readCourseError: %f (%f %f)\n"), d, degreeDestF, degreeCurF);
@@ -246,6 +262,17 @@ void gps::correctCoords() {
     latitude = latitudeRaw;
     longitude = longitudeRaw;
     debug(L_NOTICE, (char *) F("gps corr after: %ld %ld (%03.3f %03.3f)\n"), latitude, longitude, angleCenter, imu::degreePI(imuSens->readCurDegree(0)));
+    // Check for compass autocorrection flags
+    if (flagAutocorrection) {
+      if (startAutocorrection) {
+        initAutocorr(latitudeRaw, longitudeRaw, latitudeTarg, longitudeTarg);
+        startAutocorrection = false;
+      }
+      if (endAutocorrection) {
+        calcOffset(latitudeRaw, longitudeRaw);
+        endAutocorrection = flagAutocorrection = false;
+      }
+    }
   }
 } // void gsp::correctCoords()
 
@@ -269,3 +296,43 @@ void gps::calcPoint(float dist, int32_t &latitudeP, int32_t &longitudeP,
   latitudeP = latitude + (int32_t) deltaY;
   longitudeP = longitude + (int32_t) deltaX;
 } // void gps::calcPoint
+
+// Initialise autocorrection calculation (must be called at start of measured movement)
+// latStart, lonStart - coordinates of robots at start of movement
+// latEnd, lonEnd - coordinates of destination point
+void gps::initAutocorr(int32_t latStart, int32_t lonStart, int32_t latEnd, int32_t lonEnd) {
+  startDir = bearing(latStart, lonStart, latEnd, lonEnd);
+  latS = latStart;
+  lonS = lonStart;
+  debug(L_NOTICE, (char *) F("gps::initAutocorr: s: %d %d e: %d %d, bearing %f\n"), latStart, lonStart, latEnd, lonEnd, startDir);
+} // void gps::initAutocorr(int32_t latStart, int32_t lonStart, int32_t latEnd, int32_t lonEnd)
+
+// Calculate compass autocorrection offset (must be called at middle of measured movement)
+// lat, lon - current robot's coordinates
+// Updates offsetSectors array
+void gps::calcOffset(int32_t lat, int32_t lon) {
+  float trueBearing, diffBearing, currOffset;
+  int sect;
+
+#ifndef DISABLE_COMPASS_AUTOCORRECTION
+  sect = calcSector(startDir);
+  // Real direction from coordinates change
+  trueBearing = bearing(latS, lonS, lat, lon);
+  // Current offset for the sector
+  currOffset = offsetSectors[sect];
+  // Calculate offset angle from coordinates change
+  diffBearing = imu::scalePI(startDir - trueBearing + currOffset);
+  // Update offset angle for the sector (average)
+  offsetSectors[sect] = (currOffset + diffBearing) / 2;
+  // Prevent to make too big offset
+  if (abs(offsetSectors[sect]) > (M_PI / 8))
+    offsetSectors[sect] /= 4;
+  debug(L_NOTICE, (char *) F("gps::calcOffset: s: %d %d e: %d %d, old: %f trueBearing: %f new %f sect %d\n"), latS, lonS, lat, lon, currOffset, trueBearing, offsetSectors[sect], sect);
+#endif
+} // void gps::calcOffset(int32_t lat, int32_t lon)
+
+// Calculate sector from angle
+uint8_t gps::calcSector(float angle) {
+  return int((imu::scalePI(angle + AUTOCORR_SECTOR_ANGLE / 2) + M_PI) / AUTOCORR_SECTOR_ANGLE + 0.5);
+} // uint8_t gps::calcSector(float angle)
+
