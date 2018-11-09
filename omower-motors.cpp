@@ -124,8 +124,8 @@ void motors::poll10() {
         if (curStatus == _moveStatus::ROLL_NAV) {
           // Turning at one place
           pidOut = pidCalc(courseError, pidRollP, pidRollI, pidRollD);
-          leftSpeed = -pidOut * maxSpeed;
-          rightSpeed = pidOut * maxSpeed;
+          leftSpeed = pidOut * maxSpeed;
+          rightSpeed = -pidOut * maxSpeed;
         } else {
           // Moving
           pidOut = pidCalc(courseError, pidMoveP, pidMoveI, pidMoveD);
@@ -240,15 +240,16 @@ float motors::pidCalc(float error, float P, float I, float D) {
 
   // Calculate PID output
   iErr = sumErr;
-  if (iErr > 1.0) {
-    iErr = 1.0;
-    sumErr = 10.0 / I;
+  // Safeguards for integral part overflow
+  if (iErr > 0.5) {
+    sumErr = iErr = 0.5;
   } else {
-    if (iErr < -1.0) {
-      iErr = -1.0;
-      sumErr = -10.0 / I;
-   } else
-    sumErr += (dErr * I) / 10.0; 
+    if (iErr < -0.5) {
+      sumErr = iErr = -0.5; 
+    } else {
+      sumErr += (dErr * I) / 10.0; 
+      iErr = sumErr;
+    }
   }
   res = dErr * P + iErr - D * (dErr - lastErr);
   debug(L_NOTICE, "motors::pidCalc: error %1.3f, dErr %1.3f, sumErr %1.3f, lasterr %1.3f, res %1.3f\n", error, dErr, sumErr, lastErr, res);
