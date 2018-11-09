@@ -1838,6 +1838,7 @@ int16_t imu::piDegree(float anglePI) {
 void imu::setCourse(int16_t degree, boolean stopWhenReached) {
   courseCur = degreePI(degree);
   stopFinished = stopWhenReached;
+  destReached = false;
 } // void imu::setCourse(int16_t degree)
 
 // Error for PID controller
@@ -1856,8 +1857,10 @@ float imu::readCourseError() {
   debug(L_NOTICE, (char *) F("imu::readCourseError: filtYaw %g, inclMag %g, courseCur %g, d %g\n"),
         filtYaw, inclMag, courseCur, d);
   // Check if we've reached needed course
-  if (stopFinished && (abs(d) < (M_PI / 20.0f)))
+  if (stopFinished && (abs(d) < (M_PI / 20.0f))) {
+    destReached = true;
     return -1000;
+  }
 
   return d;
 } // float imu::readCourseError()
