@@ -17,6 +17,7 @@ _status seeker::init() {
   offsetAngle = orientAngle = INVALID_ANGLE;
   distance = 0;
   lastReceived = 0;
+  lastAged = millis();
   return _status::NOERR;
 } // _status seeker::init()
 
@@ -75,7 +76,7 @@ void seeker::startSeeker(boolean fixOrientation, uint16_t minDistance) {
 } // void seeker::startSeeker(boolean fixOrientation, uint16_t minDistance)
 
 // Set angles and distance from raspberry pi (via pfodApp or modbus interfaces)
-void seeker::setSeekerData(int16_t extOffsetAngle, int16_t extOrientAngle, uint16_t extDistance) {
+void seeker::setSeekerData(int16_t extOffsetAngle, int16_t extOrientAngle, uint16_t extDistance, uint16_t ageMeasure) {
   offsetAngle = extOffsetAngle;
   orientAngle = extOrientAngle;
   distance = extDistance;
@@ -83,26 +84,40 @@ void seeker::setSeekerData(int16_t extOffsetAngle, int16_t extOrientAngle, uint1
   // If we have IMU's help - calculate absolute direction needed
   if (imuSens) {
     int16_t totalDiff;
+    int16_t aged;
+    int16_t nAged;
+    int16_t dirMove;
 
-    if (distance > 130)
-      totalDiff = offsetAngle - orientAngle * 1.5;
-    else
-      totalDiff = offsetAngle - orientAngle;
+    // Use orientation angle to try to approach from front
+    if (flagFixOrientation) {
+      if (distance > 130)
+        totalDiff = offsetAngle - orientAngle * 1.5;
+      else
+        totalDiff = offsetAngle - orientAngle;
+    } else
+      totalDiff = offsetAngle;
 
-    if (totalDiff > 33)
-      totalDiff = 33;
-    if (totalDiff < -33)
-      totalDiff = -33;
-    absDir = imuSens->readCurDegree(-1) + totalDiff;
-    if (absDir >= 180)
-      absDir = 360 - absDir;
-    if (absDir <= -180)
-      absDir = 360 + absDir;
-    absDir = imu::degreePI(absDir);
+    if (totalDiff > 22)
+      totalDiff = 22;
+    if (totalDiff < -22)
+      totalDiff = -22;
+    // Get compass reading for about that age of seeker's measure
+    // It'll help to keep robot's movement stable even if seeker calculates very slow
+    nAged = ageMeasure / 100  + 1;
+    if (nAged > 5)
+      nAged = 5;
+    aged = agedCompass[nAged];
+    // Calculate direction by compass
+    dirMove = aged + totalDiff;
+    if (dirMove >= 180)
+      dirMove = -(360 - dirMove);
+    if (dirMove <= -180)
+      dirMove = 360 + dirMove;
+    absDir = imu::degreePI(dirMove);
   }
   debug(L_INFO, (char *) F("setSeekerData: %hd, %hd, %hd %f\n"),
         offsetAngle, orientAngle, distance, absDir);
-} // void seeker::setSeekerData(int16_t extOffsetAngle, int16_t extOrientAngle, uint16_t extDistance)
+} // void seeker::setSeekerData(int16_t extOffsetAngle, int16_t extOrientAngle, uint16_t extDistance, uint16_t ageMeasure)
   
 
 // Must be called 20 times per second
@@ -110,4 +125,18 @@ void seeker::poll20() {
   // Check if data is too old
   if ((millis() - lastReceived) > maxTimeout)
     distance = 0;
+
+  // in IMU's guided mode - update agedCompass
+  if (imuSens) {
+    if ((millis() - lastAged) >= 100) {
+      lastAged = millis();
+
+      // Shift agedCompass values
+      for (int i = 0; i < 4; i++) {
+        agedCompass[5 - i - 1] = agedCompass[5 - i - 2];
+      }
+      // Remember current value of compass
+      agedCompass[0] = imuSens->readCurDegree(-1);
+    }
+  }
 } // void seeker::poll20()

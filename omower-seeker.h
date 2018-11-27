@@ -47,7 +47,7 @@ public:
   _hwstatus softError();
 
   // Set angles and distance from raspberry pi (via pfodApp or modbus interfaces)
-  void setSeekerData(int16_t extOffsetAngle, int16_t extOrientAngle, uint16_t extDistance);
+  void setSeekerData(int16_t extOffsetAngle, int16_t extOrientAngle, uint16_t extDistance, uint16_t ageMeasure);
 
   // Must be called 20 times per second
   void poll20();
@@ -63,7 +63,13 @@ private:
   boolean flagFixOrientation;
 
   // For IMU's guided mode - absolute direction calculated when seeker sends data
-  float absDir;
+  volatile float absDir;
+
+  // Array of old compass readings for IMU's guided mode
+  volatile int16_t agedCompass[5];
+
+  // time of last update agedCompass
+  volatile uint32_t lastAged;
 };
 
 #endif
