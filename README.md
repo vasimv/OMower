@@ -20,11 +20,13 @@ and step-motor drivers for cutter's height adjusting.
 
 Supports many communication ports of ATSAM3X8E with onboard connectors to connect almost everything. 
 
+It may operate with pure pfodApp (or Modbus) user interface but has limited support for Robot OS (ROS).
+
 
 HARDWARE
 
 The board is based on ATSAM3X8E-AU MCU in 144-pins LQFP case (for arduino IDE it looks like Arduino Due
-without "native" port).
+without "programming" port).
 
 Power subsystem includes step-down charging regulator (up to 4A charging current) and step-up for solar
 battery, bi-stable relay for emergency shutdown. Has 3 switching regulators to provide 3.3V and 5V to
@@ -88,6 +90,13 @@ Clone https://github.com/vasimv/OMower_Simple and  put its folder into ~/Arduino
 pfodApp to control the robot.
 
 
+ROS support
+
+At this moment, ROS support is limited and includes sending some of sensors data to ROS (with *MultiArray
+messages but i planning to convert them to standartized message types) and routing debug and user
+interface to ROS topics. See OMower_Simple firmware example on how to enable ROS in your firmware.
+
+
 HOW IT WORKS
 
 OMower software must define all needed objects, set pointers to other objects where it needed (like
@@ -126,7 +135,9 @@ inductor+analog amplifier).
 
 Serial object (omower-serial.h) handles communication with serial ports (as you can't use arduino's
 objects for that because possible interrupts conflicts). It has also better printf() functions which
-supports %f/%g for floats.
+supports %f/%g for floats. UART (Serial.*) interface works with DMA (through built-in PDC) with huge
+output buffer (2048 bytes, can be changed in omower-debug.h), so debug output function won't cause
+slow-downs.
 
 Sonars object (omower-sonars.h) handles HC-SR04 sonars (up to 6). It returns sonar's reported distance
 (in centimeters) through its readSonar() function. Since motors routines do not check for any obstacles
