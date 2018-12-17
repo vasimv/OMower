@@ -3,8 +3,10 @@
 // its data through pfodApp/modbus interface)
 // $Id$
 
-#include <omower-seeker.h>
+#include <omower-defs.h>
 #include <omower-imu.h>
+#include <omower-seeker.h>
+#include <omower-ros.h>
 
 // Class's constructor (just vars init)
 seeker::seeker() {
@@ -14,10 +16,12 @@ seeker::seeker() {
 
 // Software init
 _status seeker::init() {
+  debug(L_INFO, (char *) F("seeker::init\n"));
   offsetAngle = orientAngle = INVALID_ANGLE;
   distance = 0;
   lastReceived = 0;
   lastAged = millis();
+//  reportToROS();
   return _status::NOERR;
 } // _status seeker::init()
 
@@ -28,9 +32,20 @@ _hwstatus seeker::softError() {
   return _hwstatus::ERROR;
 } // _hwstatus softError()
 
+_hwstatus seeker::begin() {
+  return _hwstatus::ONLINE;
+} // _hwstatus seeker::begin()
+
+#ifdef USE_ROS
+int16_t rosSeeker[3];
+#endif
+
 // Course correction for motors class (just offsetAngle right now)
 float seeker::readCourseError() {
   float resAngle;
+
+  debug(L_INFO, (char *) F("seeker::readCourseError: absDir: %g, distance: %hd, offsetAngle: %hd, orientAngle: %hd\n"), absDir, distance, offsetAngle, orientAngle);
+  // reportToROS();
 
   // No object visible, temporary stop
   if (distance == 0)
@@ -104,9 +119,9 @@ void seeker::setSeekerData(int16_t extOffsetAngle, int16_t extOrientAngle, uint1
     // Get compass reading for about that age of seeker's measure
     // It'll help to keep robot's movement stable even if seeker calculates very slow
     nAged = ageMeasure / 100  + 1;
-    if (nAged > 5)
+    if (nAged >= 5)
       nAged = 5;
-    aged = agedCompass[nAged];
+    aged = agedCompass[nAged - 1];
     // Calculate direction by compass
     dirMove = aged + totalDiff;
     if (dirMove >= 180)
@@ -119,7 +134,6 @@ void seeker::setSeekerData(int16_t extOffsetAngle, int16_t extOrientAngle, uint1
         offsetAngle, orientAngle, distance, absDir);
 } // void seeker::setSeekerData(int16_t extOffsetAngle, int16_t extOrientAngle, uint16_t extDistance, uint16_t ageMeasure)
   
-
 // Must be called 20 times per second
 void seeker::poll20() {
   // Check if data is too old
@@ -136,7 +150,19 @@ void seeker::poll20() {
         agedCompass[5 - i - 1] = agedCompass[5 - i - 2];
       }
       // Remember current value of compass
-      agedCompass[0] = imuSens->readCurDegree(-1);
+      agedCompass[0] = imuSens->readCurDegree(0);
     }
   }
+#ifdef USE_ROS
+  rosSeeker[0] = offsetAngle;
+  rosSeeker[1] = orientAngle;
+  rosSeeker[2] = distance;
+#endif
 } // void seeker::poll20()
+
+// Force report to ROS
+void seeker::reportToROS() {
+#ifdef USE_ROS
+  oROS.reportToROS(reportSensor::SEEKER, (uint8_t *) &rosSeeker, 3);
+#endif
+} // void seeker::reportToROS()

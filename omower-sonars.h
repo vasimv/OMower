@@ -8,6 +8,7 @@
 #include <Arduino.h>
 #include <stdint.h>
 #include <omower-defs.h>
+#include <omower-ros.h>
 
 class sonars : public thing {
 public:
@@ -31,6 +32,9 @@ public:
   _status disableThings();
 
   void poll20();
+
+  // Force report sonars to ROS
+  void reportToROS();
 
 private:
   // Current sonar pinged

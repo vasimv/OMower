@@ -13,6 +13,10 @@
 // Arduino due without 32.768 crystal!
 #define NO_RTC_CRYSTAL
 
+// Use EMAC/HSMCI/SSC interrupts as software generated interrupts for better multitasking
+// Drawbacks - you cannot use secondary I2C and primary I2C bus from poll50() functions only
+#define USE_SOFTWARE_INTERRUPTS
+
 // Size of nvmem available for writing/reading, for internal flash must be less than 2048 (one                
 // flash's page size), should be (32 * 2**N)                                                                  
 #define NVMEM_SIZE 512

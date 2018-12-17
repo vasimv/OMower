@@ -3,10 +3,11 @@
 
 #include <omower-defs.h>
 #include <Arduino.h>
-#include "omower-constants.h"
-#include "omower-debug.h"
-#include "omower-mow.h"
-#include "omower-motors.h"
+#include <omower-constants.h>
+#include <omower-debug.h>
+#include <omower-mow.h>
+#include <omower-motors.h>
+#include <omower-ros.h>
 #include <pwm_lib.h>
 
 using namespace arduino_due::pwm_lib;
@@ -71,6 +72,7 @@ void motorMow::poll10() {
       if ((lastOn - millis()) > 20000)
         currentSens->calibCurrent(0);
     }
+    currentSens->reportToROS();
   }
 
   if (currentSpeed == speedSet)
@@ -97,11 +99,15 @@ void motorMow::reverseMow() {
   setSpeed(currentSpeed);
 } // void motorMow::reverseMow()
 
+int16_t rosMowSpeed;
+
 void motorMow::setSpeed(uint8_t speed) {
   int32_t duty = 1;
 
   if (reverseDir)
     duty = -1;
+  
+  rosMowSpeed = speed * duty;
   // Calculate duty with integer sizes in mind
   duty = MOW_PWM_ZEROMIDDLE
          + ((duty * (int32_t) MOW_PWM_OFFSET * (int32_t) speed) / 65535) * (int32_t) maxPWM;
@@ -109,6 +115,7 @@ void motorMow::setSpeed(uint8_t speed) {
 #ifdef CH_MOW_PPM
   pwm_mow.set_duty(duty);
 #endif
+  reportToROS();
 } // void motorMow::setSpeed(int8_t speed)
 
 _status motorMow::setHeight(uint8_t height) {
@@ -157,7 +164,7 @@ _hwstatus motorMow::begin() {
 // Returns number of pulses before fault or end switch
 int motorMow::stepMove(int steps) {
   int i;
-  uint8_t tmpSpeed;
+  uint8_t tmpSpeed = maxSpeed;
   boolean ignoreEnd;
 
   debug(L_NOTICE, (char *) F("Moving stepper for %d steps, initial pos %hu\n"), steps, heightMow);
@@ -207,6 +214,7 @@ int motorMow::stepMove(int steps) {
 _status motorMow::init() {
   uint8_t tmpHeight = heightMow;
 
+  debug(L_INFO, (char *) F("motorMow::init\n"));
   // reset mowing motor speed
   setSpeed(0);
   reverseDir = false;
@@ -220,7 +228,8 @@ _status motorMow::init() {
 
   lastOn = millis();
   errorStatus = 0;
-
+  if (currentSens)
+    currentSens->reportToROS();
   return _status::NOERR;
 } // _status motorMow::init()
 
@@ -235,9 +244,17 @@ _hwstatus motorMow::softError() {
 _status motorMow::disableThings() {
   maxSpeed = 0;
   setSpeed(0);
+  return _status::NOERR;
 } // _status motorMow::disableThings()
 
 // Enable motor driver
 _status motorMow::enableThings() {
-
+  return _status::NOERR;
 } // _status motorMow::enableThings()
+
+// Force report to ROS
+void motorMow::reportToROS() {
+#ifdef USE_ROS
+  oROS.reportToROS(reportSensor::MOWPWM, (uint8_t *) &rosMowSpeed, 1);
+#endif
+} // void motorMow::reportToROS() 

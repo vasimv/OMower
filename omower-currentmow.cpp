@@ -6,6 +6,7 @@
 #include <due-adc-scan.h>
 #include <max11617-adc-scan.h>
 #include <omower-debug.h>
+#include <omower-ros.h>
 
 // Constructor
 currentMow::currentMow() {
@@ -19,6 +20,10 @@ currentMow::currentMow() {
   #endif
   prevValue = zeroOffset;
 } // currentMotors::currentMotors()
+
+#ifdef USE_ROS
+float rosMowCurrent;
+#endif
 
 // Returns raw current values
 uint16_t currentMow::readRawCurrent(numThing n) {
@@ -40,3 +45,11 @@ uint16_t currentMow::readRawCurrent(numThing n) {
   prevValue = value;
   return value;
 } // uint16_t currentMow::readRawCurrent(numThing n)
+
+// Force report to ROS
+void currentMow::reportToROS() {
+#ifdef USE_ROS
+  rosMowCurrent = readCurrent(0);
+  oROS.reportToROS(reportSensor::MOWCURRENT, (uint8_t *) &rosMowCurrent, 1);
+#endif
+} // void currentMow::reportToROS()

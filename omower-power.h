@@ -29,6 +29,9 @@ class currentPow : public currentThing {
 public:
   currentPow();
 
+  // Force report to ROS
+  void reportToROS();
+
 private:
   // Previous value for filter
   volatile uint16_t prevValueBatt;
@@ -93,6 +96,9 @@ public:
 
   // Enable power save mode
   _status disableThings();
+
+  // Force report to ROS
+  void reportToROS();
   
 private:
   // Flag of power save mode
@@ -109,7 +115,7 @@ private:
   uint32_t lastCharge;
 
   // Previous values for the filter
-  uint16_t prevValue[7];
+  uint16_t prevValue[_NUM_VOLTAGE_SENSORS];
 
   // Battery voltage without charging current applied
   float battProbe;

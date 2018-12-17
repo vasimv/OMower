@@ -4,22 +4,25 @@
 #ifndef _OMOWER_ROOT_H
 #define _OMOWER_ROOT_H
 
-#include <stddef.h>
 #include <Arduino.h>
+#include <stddef.h>
 #include <omower-enums.h>
+
+// Problems with Os optimization!
+#pragma GCC optimize ("O3")
 
 // Base class for all devices
 class thing {
 public:
   // Hardware initialization (once)
-  virtual _hwstatus begin() {}
+  virtual _hwstatus begin() { return _hwstatus::ONLINE; }
 
   // (re)Initializing hardware of all devices of same class
-  virtual _status init() {}
+  virtual _status init() { return _status::NOERR;}
 
   // Enable/disable for all devices of same class (sleep mode if supported)
-  virtual _status enableThings() {}
-  virtual _status disableThings() {}
+  virtual _status enableThings() { return _status::NOERR; }
+  virtual _status disableThings() { return _status::NOERR; }
 
   // Returns number of devices of the class
   inline virtual numThing numThings() { return 1; }
@@ -42,6 +45,9 @@ public:
   // Resets errors counter
   virtual void resetError(numThing n) {}
 
+  // Force to report sensor 
+  virtual void reportToROS() { return; }
+
   // This method must be called 10 times per second
    inline virtual void poll10() { return; }
 
@@ -57,10 +63,10 @@ class navThing : public thing {
 public:
   // Returns error for PID-controller, -PI..PI range
   // (if > 999 - temporary stop, if < -999 - emergency stop)
-  virtual float readCourseError();
+  virtual float readCourseError() { return -999; }
 
   // Returs true if reached the destination
-  virtual boolean reachedDest() { return destReached; };
+  virtual boolean reachedDest() { return destReached; }
 
   // Constructor
   navThing() {};

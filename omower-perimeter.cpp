@@ -43,6 +43,7 @@ _status perimeter::init() {
   for (uint8_t i = 0; i < sizeof(sigcode); i++)
     for (uint8_t j = 0; j < SUBSAMPLE_SIZE; j++)
       sigProcessed[i * SUBSAMPLE_SIZE + j] = (int16_t) sigcode[i];
+  reportToROS();
   return _status::NOERR;
 } // _status perimeter::init() {
 
@@ -314,9 +315,11 @@ int16_t perimeter::corrFilter(uint16_t *ip, uint8_t nPts, float &quality, uint16
 // Disable perimeter
 _status perimeter::disableThings() {
   enabledPerimeter = false;
+  return _status::NOERR;
 } // _status perimeter::disableThings()
 
 // Enable perimeter
 _status perimeter::enableThings() {
   enabledPerimeter = true;
+  return _status::NOERR;
 } // _status perimeter::enableThings()

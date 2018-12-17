@@ -3,6 +3,7 @@
 // $Id$
 
 #include <omower-virtperim.h>
+#include <omower-ros.h>
 
 #define min(a,b) (((a)<(b))?(a):(b))
 #define max(a,b) (((a)>(b))?(a):(b))
@@ -31,6 +32,7 @@ _hwstatus virtPerim::begin() {
   }
   trackingMode = false;
   enabledPerimeter = true;
+  return _hwstatus::ONLINE;
 } // _hwstatus virtPerim::begin()
 
 // Enable perimeter
@@ -52,10 +54,14 @@ void virtPerim::poll10() {
   // Filtering inside/outside status
   statsInside = statsInside + filterK * ((insideCur ? 1 : 0) - statsInside);
   // Update current state with hystersis
-  if (currentState && (statsInside < 0.5))
+  if (currentState && (statsInside < 0.5)) {
     currentState = false;
-  if (!currentState && (statsInside > 0.7))
+    reportToROS();
+  }
+  if (!currentState && (statsInside > 0.7)) {
+    reportToROS();
     currentState = true;
+  }
   if (currentState)
     lastInside = millis();
 } // void virtPerim::poll10()
@@ -277,6 +283,8 @@ _status virtPerim::init(nvmem *saveMem) {
     oSave->curAddr = nvmemAddr;
     loadPerimeter();
   }
+  reportToROS();
+  return _status::NOERR;
 } // _status virtPerim::init(nvmem *saveMem)
 
 
@@ -434,3 +442,9 @@ void virtPerim::getPointPerim(point_t &pClosest) {
   }
 } // void virtPerim::getPointPerim(point_t &pClosest)
 
+// Force report status to ROS
+void virtPerim::reportToROS() {
+#ifdef USE_ROS
+  oROS.reportToROS(reportSensor::VIRTPERIM, (uint8_t *) &currentState, 1);
+#endif
+} // void virtPerim::reportToROS()

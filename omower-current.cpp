@@ -4,9 +4,11 @@
 #include <omower-root.h>
 #include <Arduino.h>
 #include <due-adc-scan.h>
+#include <omower-debug.h>
 
 // stub
 _status currentThing::init() {
+  return _status::NOERR;
 } // _status currentThing::init()
                                                                                                               
 // stub

@@ -7,6 +7,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <xsystem.h>
+#include <omower-ros.h>
 
 
 volatile boolean debugDisable = false;
@@ -16,32 +17,53 @@ uint8_t debugLevel = L_DEBUG;
 
 uint8_t consSBuf[_WRITE_BUFFER_SIZE];
 uint8_t consRBuf[_READ_BUFFER_SIZE];
+#ifdef USE_ROS
+// We need bigger buffer for debugging logs in ROS mode
+char debugOutBuf[1560];
+uint16_t cntDebugOut = 0;
+#else
 char debugOutBuf[256];
-
+#endif
 
 void debug(uint8_t level, const char *fmt, ...) {
   va_list args;
-  int nlen;
+  int nlen, freeBytes;
 
   // Don't send debug output if the port is busy in main/interrupt thread
-  boolean dontSend = false;
-  uint32_t ticks = 0;
-
   if (debugDisable || debugInProgress || (level < debugLevel))
-    dontSend = true;
+    return;
   debugInProgress = true;
   
   // Check if something is sending on the port already (see omower-serial)
   va_start(args, fmt);
-  if (!dontSend)
-    nlen = rpl_vsnprintf(debugOutBuf, sizeof(debugOutBuf) - 1, fmt, args);
+  freeBytes = sizeof(debugOutBuf) - 1 - cntDebugOut;
+  if (freeBytes > 1) {
+    nlen = rpl_vsnprintf(debugOutBuf + cntDebugOut, freeBytes, fmt, args);
+    if (nlen > 0) {
+      cntDebugOut += nlen;
+      if (cntDebugOut > (sizeof(debugOutBuf) - 1))
+        cntDebugOut = sizeof(debugOutBuf) - 1;
+    }
+  }
   va_end(args);
 
+#if !defined(USE_ROS) || defined(DEBUG_ON_CONSOLE)
   // Check if sending is blocked or we don't have enough space in buffer
-  if (!dontSend && ((UART->UART_TCR + UART->UART_TNCR + nlen) < sizeof(consSBuf)))
-    consWrite((uint8_t *) debugOutBuf, nlen);
+  if ((UART->UART_TCR + UART->UART_TNCR + cntDebugOut) < sizeof(consSBuf))
+    consWrite((uint8_t *) debugOutBuf, cntDebugOut);
+  cntDebugOut = 0;
+#else
+  debugOutBuf[cntDebugOut] = '\0';
+  oROS.reportToROS(reportSensor::DEBUG, (uint8_t *) debugOutBuf, cntDebugOut);
+#endif
   debugInProgress = false;
 } // void debug(uint8_t log_level, const char *fmt, ...)
+
+// Resets debug output buffer
+void resetDebugOutput() {
+  debugOutBuf[0] = '\0';
+  cntDebugOut = 0;
+} // void resetDebugOutput()
 
 // Returns number of available characters in receive buffer
 uint16_t consAvailable() {

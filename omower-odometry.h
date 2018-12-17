@@ -42,6 +42,9 @@ public:
 
   void poll10();
 
+  // Force report odometers readings to ROS
+  void reportToROS();
+
 private:
   long prevTicks[_NUM_ODOMETERS_WHEELS];
   uint8_t pollsNum;

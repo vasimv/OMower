@@ -25,6 +25,9 @@ public:
   _locationThings locThings() { return _locationThings::LEFTFORW_RIGHTFORW_LEFTBACK_RIGHTBACK; }
   numThing numThings() { return BUMPERS_NUM; }
 
+  // Force report to ROS
+  void reportToROS();
+
 private:
 #if (BUMPERS_NUM > 0)
   // Bumper counters

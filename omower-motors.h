@@ -85,6 +85,8 @@ public:
 
   void poll10();
 
+  void reportToROS();
+
 private:
   // Current PWM values (negative values means reverse)
   int16_t leftPWM = 0;

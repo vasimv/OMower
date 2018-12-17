@@ -124,6 +124,9 @@ public:
 
   void poll10();
 
+  // Force report coordinates to ROS
+  void reportToROS();
+
 private:
   // TinyGPS++ object
   TinyGPSPlus tinygps;

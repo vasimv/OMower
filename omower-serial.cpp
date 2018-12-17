@@ -1,6 +1,7 @@
 // Serial UART/USARTs support class for ATSAM3X8E
 // $Id$
 
+#include <omower-defs.h>
 #include <omower-serial.h>
 #include <omower-debug.h>
 #include <stdarg.h>
@@ -81,7 +82,9 @@ uint16_t serial::write(numThing n, unsigned char *buf, uint16_t len, uint16_t ti
   if (n == 0) {
     uint16_t wrote;
 
+#ifndef USE_ROS
     debugDisable = true;
+#endif
     wrote = consWrite(buf, len);
     sent = wrote;
     if (wrote != len) {
@@ -93,7 +96,9 @@ uint16_t serial::write(numThing n, unsigned char *buf, uint16_t len, uint16_t ti
         sent += wrote;
       }
     }
+#ifndef USE_ROS
     debugDisable = false;
+#endif
     return sent;
   }
 
@@ -134,6 +139,8 @@ void serial::printf(numThing n, char *fmt, ...) {
 
   va_start(args, fmt);
   len = rpl_vsnprintf((char *) buf, sizeof(buf), fmt, args);
+  if (len < 0)
+    len = strlen((char *) buf);
   va_end(args);
   write(n, buf, len);
 } // void serial::printf(numThing n, char *fmt, ...)
@@ -150,4 +157,5 @@ _hwstatus serial::begin() {
   NVIC_SetPriority(USART0_IRQn, 3);
   NVIC_SetPriority(USART1_IRQn, 3);
   NVIC_SetPriority(USART2_IRQn, 3);
+  return _hwstatus::ONLINE;
 } // _hwstatus serial::begin()

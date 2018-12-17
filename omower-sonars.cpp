@@ -3,6 +3,7 @@
 
 #include <omower-sonars.h>
 #include <Arduino.h>
+#include <omower-ros.h>
 #include <string.h>
 
 numThing sonars::numThings() {
@@ -73,6 +74,7 @@ static void sonarsIntBack() {
 
 // Software (re)initialization
 _status sonars::init() {
+  debug(L_INFO, (char *) F("sonars::init\n"));
   // Set pins
   pinMode(PIN_SONAR_TRIG1, OUTPUT);
   digitalWrite(PIN_SONAR_TRIG1, LOW);
@@ -101,6 +103,8 @@ _status sonars::init() {
 
   currentSonar = 0;
   enableSonars = true;
+
+  reportToROS();
   return _status::NOERR;
 } // _status sonars::init() {
 
@@ -190,4 +194,11 @@ _status sonars::disableThings() {
   enableSonars = false;
   return _status::NOERR;
 } // _status sonars::disableThings()
+
+// Force report sonars to ROS
+void sonars::reportToROS() {
+#ifdef USE_ROS
+  oROS.reportToROS(reportSensor::SONARS, (uint8_t *) sonarDist, SONARS_NUM);
+#endif
+} // void sonars::reportToROS()
 

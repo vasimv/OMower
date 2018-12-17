@@ -10,6 +10,7 @@
 #include <max11617-adc-scan.h>
 #include <omower-motors.h>
 #include <omower-debug.h>
+#include <omower-ros.h>
 
 #define MADGWICK_RATE 50
 #define KALMAN_Q_ANGLE 0.1f
@@ -281,6 +282,7 @@ void imu::poll50() {
   if ((comSelfTest == 0) && compassNeedComp && (abs(filtTemp - comTempInit) >= 5))
     comSelfTest = 2;
 #endif
+  reportToROS();
 } // void imu::poll50()
 
 // Calibrate accelerometer
@@ -813,7 +815,7 @@ void imu::calibMPU6500(boolean onlyGyro) {
 // Read data from FXOS8700 accelerometer+magnetometer
 boolean imu::readFXOS8700() {
   uint8_t data[7];
-  uint8_t i, res;
+  uint8_t res;
   uint8_t samples = 0;
   int16_t tmpX, tmpY, tmpZ;
 
@@ -866,8 +868,6 @@ boolean imu::readFXOS8700() {
 
 // Restart auto calibration of FXOS8700 magnetometer
 void imu::restartAutoCalibFXOS8700() {
-  uint8_t i;
-
   imuLocked = true;
   delay(5);
   // Reset min/max registers
@@ -1509,6 +1509,7 @@ _hwstatus imu::begin() {
   accelCalibrated = true;
   gyroOfs.x = gyroOfs.y = gyroOfs.z = 0;
   oSave = NULL;
+  return _hwstatus::ONLINE;
 } // _hwstatus imu::begin()
 
 // (re-)Initialization of IMU
@@ -1979,6 +1980,7 @@ _status imu::saveCalib() {
       for (i = 0; i < 6; i++)
         oSave->writeMem(-9999.0f);
   }
+  return _status::NOERR;
 } // _status imu::saveCalib()
 
 // Load calibration values from NVMEM
@@ -2040,4 +2042,21 @@ _status imu::loadCalib() {
           accOfs.x, accOfs.y, accOfs.z, accScale.x, accScale.y, accScale.z,
           comOfs.x, comOfs.y, comOfs.z, comScale.x, comScale.y, comScale.z);
   }
+  return _status::NOERR;
 } // _status imu::loadCalib()
+
+#ifdef USE_ROS
+int16_t rosOrient[3];
+#endif
+
+// Force report to ROS
+void imu::reportToROS() {
+#ifdef USE_ROS
+  rosOrient[0] = readCurPitchDegree(0);
+  rosOrient[1] = readCurRollDegree(1);
+  rosOrient[2] = readCurDegree(-1);
+
+  oROS.reportToROS(reportSensor::ORIENTATION, (uint8_t *) rosOrient, 3);
+#endif
+} // void imu::reportToROS()
+

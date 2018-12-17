@@ -1,13 +1,15 @@
 // Wheel motors odometry sensors class for OMower
 // $Id$
 
-#include "omower-odometry.h"
+#include <omower-odometry.h>
 #include <Arduino.h>
-#include "omower-debug.h"
-#include "omower-enums.h"
+#include <omower-debug.h>
+#include <omower-enums.h>
+#include <omower-ros.h>
 #include <string.h>
+#include <stdint.h>
 
-volatile long ticksMotors[_NUM_ODOMETERS_WHEELS];
+volatile int32_t ticksMotors[_NUM_ODOMETERS_WHEELS];
 
 // Callbacks for pin FALLING state
 #ifdef PIN_ODO_A2
@@ -82,11 +84,13 @@ _status odometryMotors::resetTicks(numThing n) {
 
 // Clear odometry variables
 _status odometryMotors::init() {
+  debug(L_INFO, (char *) F("odometryMotors::init\n"));
   memset((void *) ticksMotors, 0, sizeof(ticksMotors));
   memset((void *) prevTicks, 0, sizeof(prevTicks));
   memset((void *) targTicks, 0, sizeof(targTicks));
   memset((void *) TPM, 0, sizeof(TPM));
   pollsNum = 0;
+  reportToROS();
   return _status::NOERR;
 } // _status odometryMotors::init()
 
@@ -127,3 +131,10 @@ void odometryMotors::poll10() {
 float odometryMotors::readCourseError() {
   return 1000;
 } // float odometryMotors::readCourseError()
+
+// Force report odometers readings to ROS
+void odometryMotors::reportToROS() {
+#ifdef USE_ROS
+  oROS.reportToROS(reportSensor::ODOMETRY, (uint8_t *) ticksMotors, _NUM_ODOMETERS_WHEELS);
+#endif
+} // void odometryMotors::reportToROS()

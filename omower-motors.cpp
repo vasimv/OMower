@@ -6,10 +6,11 @@
 
 #include <omower-defs.h>
 #include <Arduino.h>
-#include "omower-constants.h"
-#include "omower-debug.h"
-#include "omower-motors.h"
+#include <omower-constants.h>
+#include <omower-debug.h>
+#include <omower-motors.h>
 #include <pwm_lib.h>
+#include <omower-ros.h>
 
 using namespace arduino_due::pwm_lib;
 
@@ -24,7 +25,7 @@ pwm<pwm_pin::CH_MOT_LEFTBACK_PWM> pwm_leftback;
 pwm<pwm_pin::CH_MOT_RIGHTBACK_PWM> pwm_rightback;
 #endif
 #else
-#include "due-adc-scan.h"
+#include <due-adc-scan.h>
 
 volatile uint32_t _leftStepsDivider = 0;
 volatile uint32_t _rightStepsDivider = 0;
@@ -49,8 +50,8 @@ void motors::poll10() {
   float pidOut;
   uint8_t speedCorr;
 
-  debug(L_DEBUG, "motors::poll10: curStatus = %d, endtime= %lu, leftPWM = %d, rightPWM = %d\n",
-       curStatus, endTime, leftPWM, rightPWM);
+  debug(L_DEBUG, "motors::poll10: curStatus = %d, endtime= %u, leftPWM = %d, rightPWM = %d\n",
+       (int) curStatus, endTime, (int) leftPWM, (int) rightPWM);
 
   // Check if there is a fault
   if (checkFault()) {
@@ -185,6 +186,9 @@ void motors::poll10() {
     _notMoving = false;
     lastMoveTime = millis();
   }
+
+  if (currentSens)
+    currentSens->reportToROS();
 } // void motors::poll10()
 
 // Calculate updated PWM with acceleration
@@ -229,6 +233,10 @@ void motors::updateSpeed(int16_t left, int16_t right, uint8_t accelCur) {
   setPWM(getPWMAccel(leftSet, leftPWM, accelCur), getPWMAccel(rightSet, rightPWM, accelCur));
 } // void motors::updateSpeed(int16_t left, int16_t right, uint8_t accel)
 
+#ifdef USE_ROS
+float rosPidMotors[4];
+#endif
+
 // PID controller output calculation -1..1
 float motors::pidCalc(float error, float P, float I, float D) {
   float dErr;
@@ -260,6 +268,13 @@ float motors::pidCalc(float error, float P, float I, float D) {
     res = 1.0;
   if (res < -1.0)
     res = -1.0;
+#ifdef USE_ROS
+  rosPidMotors[0] = error;
+  rosPidMotors[1] = res;
+  rosPidMotors[2] = dErr;
+  rosPidMotors[3] = sumErr;
+  oROS.reportToROS(reportSensor::MOTORPID, (uint8_t *) rosPidMotors, 4);
+#endif
   return res;
 } // float motors::pidCalc(float error, float P, float I, float D) 
 
@@ -361,7 +376,7 @@ void motors::moveCourse(navThing *sensor, unsigned long ms) {
   pidReset();
   endTime = ms + millis();
   curStatus = _moveStatus::MOVE_NAV;
-  debug(L_INFO, "motors::moveCourse: ms %lu\n", ms);
+  debug(L_INFO, "motors::moveCourse: navThing %X (%f) ms %lu\n", sensor, sensor->readCourseError(), ms);
 } // void motors::moveCourse(navThing *sensor, unsigned long ms)
 
 // Current PWM of motors
@@ -425,7 +440,8 @@ _hwstatus motors::begin() {
   pinMode(PIN_MOT_RIGHTFORW_STEP, OUTPUT);
   digitalWrite(PIN_MOT_RIGHTFORW_STEP, LOW);
   #endif
-} // motors::motors()
+  return _hwstatus::ONLINE;
+} // _hwstatus motors::begin()
 
 void motors::setPWM(int16_t left, int16_t right) {
 #ifdef MOT_DRIVER_DRV8825
@@ -440,7 +456,7 @@ void motors::setPWM(int16_t left, int16_t right) {
     left = -left;
   else
     right = -right;
-  debug(L_NOTICE, (char *) F("motors::setPWM: %hd %hd\n"), left, right);
+  debug(L_NOTICE, (char *) F("motors::setPWM: %d %d\n"), (int) left, (int) right);
   #ifdef MOT_DRIVER_DRV8825
   if ((digitalRead(PIN_MOT_FORW_ENABLE) == LOW) && ((leftPWM != 0) || (rightPWM != 0)))
     _motorsWakeUp = DRV8825_WAKEUP;
@@ -533,10 +549,21 @@ void motors::setPWM(int16_t left, int16_t right) {
     digitalWrite(PIN_MOT_RIGHTFORW_STEP, HIGH);
     #endif
   }
+  reportToROS();
 } // void motors::setPWM(int16_t left, int16_t right)
+
+// Force report PWM output to ROS
+void motors::reportToROS() {
+#ifdef USE_ROS
+  // Report new PWM output to ROS
+  oROS.reportToROS(reportSensor::MOTORPWM, (uint8_t *) &leftPWM, 2);
+#endif
+} // void motors::reportToROS()
 
 // motors initialization
 _status motors::init() {
+  debug(L_INFO, (char *) F("motors::init\n"));
+
   // Reset motor driver with STDBY/RST pin
   disableThings();
   delay(1);
@@ -561,6 +588,8 @@ _status motors::init() {
   setPWM(0, 0);
   _notMoving = true;
   lastMoveTime = 0;
+  if (currentSens)
+    currentSens->reportToROS();
   return enableThings();
 } // _status motors::init()
 

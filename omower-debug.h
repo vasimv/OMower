@@ -18,6 +18,9 @@
 #define L_WARNING 3
 #define L_ERROR 4
 
+// Force debug information on console (even if USE_ROS defined)
+// #define DEBUG_ON_CONSOLE
+
 // disable debug routine
 extern volatile boolean debugDisable;
 
@@ -25,6 +28,9 @@ extern volatile boolean debugDisable;
 extern uint8_t debugLevel;
 
 void debug(uint8_t level, const char *fmt, ...);
+
+// Resets debug output buffer (after ROS publish)
+void resetDebugOutput();
 
 // Console read/write functions
 // Returns number of available characters in receive buffer

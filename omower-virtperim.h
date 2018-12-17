@@ -82,6 +82,9 @@ public:
   // Must be called 10 times per second (perimeter timeout)
   void poll10();
 
+  // Force report status to ROS
+  void reportToROS();
+
 private:
 
   // pointer to NVMEM and array address

@@ -17,6 +17,8 @@ public:
   // Number of current sensors
   numThing numThings();
 
+  // Force report to ROS
+  void reportToROS();
 private:
 #ifdef MOT_QUAD_WHEELS
   uint16_t prevRaw[4];

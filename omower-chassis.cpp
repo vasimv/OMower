@@ -1,6 +1,7 @@
 // Chassis data and common hardware initialization
 // $Id$
 
+#include <omower-defs.h>
 #include <omower-chassis.h>
 #include <Arduino.h>
 #include <DueTimer.h>
@@ -8,7 +9,7 @@
 #include <due-adc-scan.h>
 #include <due-i2c-blocking.h>
 #include <max11617-adc-scan.h>
-#include <omower-defs.h>
+#include <omower-debug.h>
 
 volatile uint32_t cyclesPollNum;
 
@@ -90,6 +91,7 @@ _hwstatus chassis::begin() {
   
   pauseTime = 2000;
   init();
+  return _hwstatus::ONLINE;
 } // _hwstatus chassis::begin()
 
 _status chassis::init() {
@@ -109,11 +111,30 @@ _status chassis::init() {
   // When large amount of slow interrupts from ADC/poll
   NVIC_SetPriority(SysTick_IRQn, 1);
 
+  NVIC_DisableIRQ(PIOA_IRQn);
+  NVIC_ClearPendingIRQ(PIOA_IRQn);
+  NVIC_SetPriority(PIOA_IRQn, 14);
+  NVIC_EnableIRQ(PIOA_IRQn);
+  NVIC_DisableIRQ(PIOB_IRQn);
+  NVIC_ClearPendingIRQ(PIOB_IRQn);
+  NVIC_SetPriority(PIOB_IRQn, 14);
+  NVIC_EnableIRQ(PIOB_IRQn);
+  NVIC_DisableIRQ(PIOC_IRQn);
+  NVIC_ClearPendingIRQ(PIOC_IRQn);
+  NVIC_SetPriority(PIOC_IRQn, 14);
+  NVIC_EnableIRQ(PIOC_IRQn);
+  NVIC_DisableIRQ(PIOD_IRQn);
+  NVIC_ClearPendingIRQ(PIOD_IRQn);
+  NVIC_SetPriority(PIOD_IRQn, 14);
+  NVIC_EnableIRQ(PIOD_IRQn);
+
+
   return _status::NOERR;
 } // _status chassis::init()
 
 // Set hooks functions for poll*(), can be NULL to set to empty hook
 void chassis::setPollHooks(void (*hookPoll50)(), void (*hookPoll20)(), void (*hookPoll10)()) {
+  debug(L_INFO, (char *) F("chassis::setPollHooks %X %X %X\n"), hookPoll50, hookPoll20, hookPoll10);
   if (hookPoll50 != NULL)
     _hookPoll50 = hookPoll50;
   else

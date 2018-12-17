@@ -8,6 +8,7 @@
 #include <Arduino.h>
 #include <omower-debug.h>
 #include <omower-imu.h>
+#include <omower-ros.h>
 
 // Constructor
 gps::gps() {
@@ -22,6 +23,7 @@ _status gps::init() {
   lastPrecision = 0;
   for (int i = 0; i < AUTOCORR_SECTORS; i++)
     offsetSectors[i] = 0;
+  reportToROS();
   return _status::NOERR;
 } // _status gps::init()
 
@@ -102,6 +104,7 @@ void gps::poll10() {
     debug(L_DEBUG, (char *) F("gps::poll10: millis %lu, lastReceived %lu, maxTimeout %hu\n"), millis(),
           lastReceived, maxTimeout);
     numSats = 0;
+    reportToROS();
   }
   // Correct coordinates by odometer's reading
   if (odoSens && imuSens && ((millis() - lastPrecision) < maxTimeout)) {
@@ -117,6 +120,7 @@ void gps::poll10() {
     longitude = longitudeRaw + (int32_t) deltaX;
     debug(L_NOTICE, (char *) F("gps odo corr %ld %ld, %03.2f %03.2f (%03.2f), final: %ld %ld\n"),
           deltaLeft, deltaRight, deltaX, deltaY, angleCur, latitude, longitude);
+    reportToROS();
   }
 } // void gps::poll10()
 
@@ -245,6 +249,7 @@ void gps::setCoords(int32_t latitudeNew, int32_t longitudeNew, uint8_t numSatsNe
     minute = minuteNew;
     second = secondNew;
   }
+  reportToROS();
 } // void gps::setCoords
 
 // Correct precision coordinates by antenna's position
@@ -336,3 +341,21 @@ uint8_t gps::calcSector(float angle) {
   return int((imu::scalePI(angle + AUTOCORR_SECTOR_ANGLE / 2) + M_PI) / AUTOCORR_SECTOR_ANGLE + 0.5);
 } // uint8_t gps::calcSector(float angle)
 
+#ifdef USE_ROS
+int32_t rosCoords[3];
+#endif
+
+// Force report coordinates to ROS
+void gps::reportToROS() {
+#ifdef USE_ROS
+  if (numSats > 0) {
+    rosCoords[2] = numSats;
+    rosCoords[0] = latitude;
+    rosCoords[1] = longitude;
+  } else {
+    rosCoords[2] = 0;
+    rosCoords[0] = rosCoords[1] = INVALID_COORD;
+  }
+  oROS.reportToROS(reportSensor::GPS, (uint8_t *) rosCoords, 3);
+#endif
+} // void gps::reportToROS()

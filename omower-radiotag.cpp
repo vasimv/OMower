@@ -19,6 +19,7 @@ _hwstatus radiotag::begin() {
 
 // Software (re)initialization
 _status radiotag::init() {
+  debug(L_INFO, (char *) F("radiotag::init\n"));
   validCoords = false;
   lastReceived = 0;
   cntBuf = 0;
@@ -123,7 +124,7 @@ float radiotag::readCourseError() {
   if (abs(distance(coordX, coordY, targX, targY)) <= 0.1)
     return -1000;
   // Temporary stop if no valid coordinates
-  if (!validCoords);
+  if (!validCoords)
     return 1000;
 
   // Get course from IMU if available

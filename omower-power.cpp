@@ -1,14 +1,15 @@
 // Power control class for OMower
 // $Id$
 
+#include <omower-defs.h>
 #include <omower-power.h>
 #include <string.h>
 #include <Arduino.h>
 #include <due-adc-scan.h>
 #include <max11617-adc-scan.h>
-#include <omower-defs.h>
 #include <omower-debug.h>
 #include <pwm_lib.h>
+#include <omower-ros.h>
 
 // PWM objects for fan and charge/boost control
 using namespace arduino_due::pwm_lib;
@@ -57,10 +58,12 @@ void power::setMain(int duty) {
   debug(L_DEBUG, (char *) F("P: c %d\n"), duty);
 } // void power::setMain(int duty)
 
+// We make them static to use in 
+float volts[_NUM_VOLTAGE_SENSORS];
+float currBatt, currBoost;
+
 // Reads all voltages, updates PWM on boost and charge
 void power::poll50() {
-  float volts[_NUM_VOLTAGE_SENSORS];
-  float currBatt, currBoost;
   float maxCurrent;
   float diffVolts;
   boolean canUseMain = false;
@@ -241,11 +244,13 @@ power::power() {
 // Enable charging from main charge port
 _status power::setMainCharge(boolean charge) {
   enableMain = charge;
+  return _status::NOERR;
 } // _status power::setMainCharge(boolean charge)
 
 // Enable charging from solar panel (enabling booster)
 _status power::setSolarCharge(boolean charge) {
   enableSolar = charge;
+  return _status::NOERR;
 } // _status power::setSolarCharge(boolean charge)
 
 // Hardware init
@@ -262,6 +267,10 @@ _hwstatus power::begin() {
   pinMode(PIN_SHUTDOWN, OUTPUT);
   digitalWrite(PIN_SHUTDOWN, LOW);
   powerSave = false;
+  reportToROS();
+  if (currentSens)
+    currentSens->reportToROS();
+  return _hwstatus::ONLINE;
 } // _hwstatus power::begin()
 
 // Emergency shutdown
@@ -375,3 +384,20 @@ _status power::disableThings() {
   return _status::NOERR;
 } // _status power::disableThings()
 
+#ifdef USE_ROS
+float rosCurrents[2];
+#endif
+
+// Force report current sensors to ROS
+void currentPow::reportToROS() {
+#ifdef USE_ROS
+  oROS.reportToROS(reportSensor::CURRENT, (uint8_t *) &currBatt, 2);
+#endif
+} // void currentPow::reportToROS()
+
+// Force report voltages to ROS
+void power::reportToROS() {
+#ifdef USE_ROS
+  oROS.reportToROS(reportSensor::VOLTAGE, (uint8_t *) volts, _NUM_VOLTAGE_SENSORS);
+#endif
+} // void power::reportToROS()

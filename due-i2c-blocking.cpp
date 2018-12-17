@@ -237,6 +237,15 @@ void i2cInit(uint8_t bus, uint32_t speed) {
   if (bus) {
     // spam SCL to reset some strange devices
     pinMode(PIN_SCL1, OUTPUT);
+    pinMode(PIN_SDA1, OUTPUT);
+    digitalWrite(PIN_SDA1, LOW);
+    for (int i = 0; i < 256; i++) {
+      digitalWrite(PIN_SCL1, HIGH);
+      delayMicroseconds(1);
+      digitalWrite(PIN_SCL1, LOW);
+      delayMicroseconds(1);
+    }
+    digitalWrite(PIN_SDA1, HIGH);
     for (int i = 0; i < 256; i++) {
       digitalWrite(PIN_SCL1, HIGH);
       delayMicroseconds(1);
@@ -244,6 +253,7 @@ void i2cInit(uint8_t bus, uint32_t speed) {
       delayMicroseconds(1);
     }
     pinMode(PIN_SCL1, INPUT_PULLUP);
+    pinMode(PIN_SDA1, INPUT_PULLUP);
 
     pmc_enable_periph_clk(WIRE1_INTERFACE_ID);
     PIO_Configure(g_APinDescription[PIN_WIRE1_SDA].pPort,
@@ -264,13 +274,23 @@ void i2cInit(uint8_t bus, uint32_t speed) {
     TWI_ConfigureMaster(WIRE1_INTERFACE, speed, VARIANT_MCK);
   } else {
     // spam SCL to reset some strange devices
+    pinMode(PIN_SDA, OUTPUT);
     pinMode(PIN_SCL, OUTPUT);
+    digitalWrite(PIN_SDA, LOW);
     for (int i = 0; i < 256; i++) {
       digitalWrite(PIN_SCL, HIGH);
       delayMicroseconds(1);
       digitalWrite(PIN_SCL, LOW);
       delayMicroseconds(1);
     }
+    digitalWrite(PIN_SDA, HIGH);
+    for (int i = 0; i < 256; i++) {
+      digitalWrite(PIN_SCL, HIGH);
+      delayMicroseconds(1);
+      digitalWrite(PIN_SCL, LOW);
+      delayMicroseconds(1);
+    }
+    pinMode(PIN_SDA, INPUT_PULLUP);
     pinMode(PIN_SCL, INPUT_PULLUP);
 
     pmc_enable_periph_clk(WIRE_INTERFACE_ID);

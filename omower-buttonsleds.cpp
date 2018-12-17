@@ -4,6 +4,8 @@
 #include <omower-defs.h>
 #include <omower-buttonsleds.h>
 #include <omower-debug.h>
+#include <omower-ros.h>
+#include <stdint.h>
 
 // Hardware init
 _hwstatus buttonsLeds::begin() {
@@ -25,32 +27,49 @@ _hwstatus buttonsLeds::begin() {
   digitalWrite(PIN_EXTLED3, LOW);
   pinMode(PIN_BEEPER, OUTPUT);
   digitalWrite(PIN_BEEPER, LOW);
+  reportToROS();
   return _hwstatus::ONLINE;
 } // _hwstatus buttonsLeds::begin()
 
+#ifdef USE_ROS
+uint8_t rosButtonLeds[6];
+#endif
+
 // Read button/led state
 boolean buttonsLeds::readSensor(numThing n) {
+  boolean res;
+
   switch (n) {
-    case T_BEEPER:
-      return (digitalRead(PIN_BEEPER) == HIGH);
+    case T_BEEPER: 
+      res = (digitalRead(PIN_BEEPER) == HIGH);
+      break;
     case T_BUTTON:
-      return (digitalRead(PIN_BUTTON) == LOW);
+      res = (digitalRead(PIN_BUTTON) == LOW);
+      break;
     case T_BOARDLED:
-      return (digitalRead(PIN_BOARDLED) == HIGH);
+      res = (digitalRead(PIN_BOARDLED) == HIGH);
+      break;
 #ifndef EXTLED1_INVERSE
     case T_EXTLED1:
-      return (digitalRead(PIN_EXTLED1) == HIGH);
+      res =  (digitalRead(PIN_EXTLED1) == HIGH);
 #else
     case T_EXTLED1:
-      return (digitalRead(PIN_EXTLED1) == LOW);
+      res = (digitalRead(PIN_EXTLED1) == LOW);
 #endif
+      break;
     case T_EXTLED2:
-      return (digitalRead(PIN_EXTLED2) == HIGH);
+      res = (digitalRead(PIN_EXTLED2) == HIGH);
+      break;
     case T_EXTLED3:
-      return (digitalRead(PIN_EXTLED3) == HIGH);
+      res = (digitalRead(PIN_EXTLED3) == HIGH);
+      break;
     default:
       return false;
   }
+#ifdef USE_ROS
+  rosButtonLeds[n] = (uint8_t) res;
+#endif
+  return res;
 } // boolean buttonsLeds::readSensor(numThing n)
 
 // Set LED/beeper state
@@ -79,4 +98,15 @@ void buttonsLeds::setLED(numThing n, boolean state) {
     default:
       return;
   }
+#ifdef USE_ROS
+  rosButtonLeds[n] = (uint8_t) state;
+#endif
+  reportToROS();
 } // void buttonsLeds::setLED(numThing n, boolean state)
+
+// Force report things to ROS
+void buttonsLeds::reportToROS() {
+#ifdef USE_ROS
+  oROS.reportToROS(reportSensor::BUTTONS, rosButtonLeds, 6);
+#endif
+} // void buttonsLeds::reportToROS()

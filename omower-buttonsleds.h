@@ -29,6 +29,9 @@ public:
 
   // Not really needed stuff
   _locationThings locThings() { return _locationThings::SPECIAL; }
-  numThing numThings() { return 3; }
+  numThing numThings() { return 6; }
+
+  // Force report things to ROS
+  void reportToROS();
 };
 #endif

@@ -82,6 +82,9 @@ public:
 
   void poll50();
 
+  // Force report to ROS
+  void reportToROS();
+
   // Static helpers stuff
   // Convert degrees to -M_PI..M_PI range
   static float degreePI(int16_t angleDegree);

@@ -6,14 +6,21 @@
 #ifndef _SEEKER_OMOWER_H
 #define _SEEKER_OMOWER_H
 
-#include <omower-root.h>
 #include <omower-defs.h>
+#include <omower-root.h>
 #include <omower-imu.h>
 #include <stdint.h>
-#include <Arduino.h>
 
 class seeker : public navThing {
 public:
+  // Constructor
+  seeker();
+
+  _hwstatus begin();
+
+  // Software init
+  _status init();
+
   // Settings variables
   // Timeout of data receive, in ms
   uint16_t maxTimeout;
@@ -28,12 +35,6 @@ public:
   // For IMU's guided mode (when robot drives by compass with offset from seeker) it must set to imu object
   // When NULL - robot will use only seeker data to move to the chessboard
   imu *imuSens;
-
-  // Constructor
-  seeker();
-
-  // Software init
-  _status init();
   
   // Set tracking mode for readCourseError(), will stop the robot
   // at minDistance (centimeters). If fixOrientation is true - it will
@@ -51,6 +52,9 @@ public:
 
   // Must be called 20 times per second
   void poll20();
+
+  // Force report to ROS
+  void reportToROS();
 
 private:
   // timestamp of last data

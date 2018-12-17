@@ -2,6 +2,7 @@
 // $Id$                     
 
 #include <omower-bumper.h>
+#include <omower-ros.h>
 
 #ifdef BUMPERS_INVERT
 #define BUMPERS_ACTIVE LOW
@@ -20,6 +21,7 @@ boolean bumper::readSensor(numThing n) {
 
 // Software initialization stuff
 _status bumper::init() {
+  debug(L_INFO, (char *) F("bumper::init\n"));
 #if (BUMPERS_NUM > 0)
   // Set pins mode
   pinMode(PIN_BUMP_LEFTFORW, INPUT_PULLUP);
@@ -43,6 +45,7 @@ _status bumper::init() {
   if (digitalRead(PIN_BUMP_RIGHTBACK) == BUMPERS_ACTIVE)
     bumperDisable[3] = true;
 #endif
+  reportToROS();
   return _status::NOERR;
 } // _status bumper::init()
 
@@ -69,3 +72,9 @@ void bumper::poll10() {
 #endif
 } // void bumper::poll10()
 
+// Force report to ROS
+void bumper::reportToROS() {
+#if defined(USE_ROS) && (BUMPERS_NUM > 0)
+  oROS.reportToROS(reportSensor::BUMPER, &bumperCount[0], BUMPERS_NUM);
+#endif
+} // void bumper::reportToROS()

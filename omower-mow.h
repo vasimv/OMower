@@ -60,6 +60,9 @@ public:
 
   void poll10();
 
+  // Force report PWM to ROS
+  void reportToROS();
+
 private:
   // Current speed
   uint8_t currentSpeed;

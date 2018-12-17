@@ -14,6 +14,8 @@ public:
   // Constructor
   currentMow();
 
+  // Force report to ROS
+  void reportToROS();
 private:
   // Previous value for filter
   volatile uint16_t prevValue;
