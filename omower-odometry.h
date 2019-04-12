@@ -22,6 +22,9 @@ public:
   // Resetting odometry variables (can be re-called for resetting)
   _status init();
 
+  // Returns number of odometers sensors
+  numThing numThings();
+
   // Reads pulses counter (negative - reverse rotation)
   long readTicks(numThing n);
 
@@ -46,10 +49,12 @@ public:
   void reportToROS();
 
 private:
+#if _NUM_ODOMETERS_WHEELS > 0
   long prevTicks[_NUM_ODOMETERS_WHEELS];
+  int32_t TPM[_NUM_ODOMETERS_WHEELS];
+#endif
   uint8_t pollsNum;
   long targTicks[2];
-  int32_t TPM[_NUM_ODOMETERS_WHEELS];
 };
 
 #endif
