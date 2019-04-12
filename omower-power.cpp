@@ -127,10 +127,10 @@ void power::poll50() {
     if (diffVolts < 0.013f)
       maxCurrent = maxChargeCurrent / 8;
     else {
-      if (diffVolts < 0.027f)
+      if (diffVolts < 0.022f)
         maxCurrent = maxChargeCurrent / 4;
       else
-        if (diffVolts < 0.041f) 
+        if (diffVolts < 0.031f) 
           maxCurrent = maxChargeCurrent / 2;
     }
   }
