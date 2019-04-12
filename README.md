@@ -93,7 +93,7 @@ pfodApp to control the robot.
 ROS support
 
 At this moment, ROS support is limited and includes sending some of sensors data to ROS (with *MultiArray
-messages but i planning to convert them to standartized message types) and routing debug and user
+messages but i planning to convert them to standartized message types), /cmd_vel support and routing debug and user
 interface to ROS topics. See OMower_Simple firmware example on how to enable ROS in your firmware.
 
 
