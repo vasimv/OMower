@@ -74,7 +74,7 @@ void radiotag::poll10() {
             debug(L_DEBUG, (char *) F("radiotag::poll10: received coords %ld %ld\n"), coordX, coordY);
             // Send coordinates to the GPS module in pass-through mode
             if (passGps != NULL)
-              passGps->setCoords(coordY / KCORR_CM_TO_COORD, coordX / KCORR_CM_TO_COORD, 129, 0, 0, 0, 0, 0, 0);
+              passGps->setCoords(coordY / KCORR_CM_TO_COORD, coordX / KCORR_CM_TO_COORD, 0, 0, 129, 0, 0, 0, 0, 0, 0);
           }
           // Remove packet from the buffer
           if (cntBuf > 25) {

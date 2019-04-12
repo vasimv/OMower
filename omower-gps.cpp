@@ -10,10 +10,14 @@
 #include <omower-imu.h>
 #include <omower-ros.h>
 
+// Global copy of UTMmode for static functions
+boolean _UTMmode;
+
 // Constructor
 gps::gps() {
   imuSens = NULL;
   odoSens = NULL;
+  UTMmode = _UTMmode = false;
   startAutocorrection = endAutocorrection = flagAutocorrection = false;
 } // gps::gps()
 
@@ -59,6 +63,7 @@ void gps::parseString(char *buf, uint16_t len) {
       longitude = coordToInt(tinygps.location.rawLng());
       latitudeRaw = coordToInt(tinygps.location.rawLat());
       longitudeRaw = coordToInt(tinygps.location.rawLng());
+      altitude = altitudeRaw = tinygps.altitude.meters() * 100.0;
       if (numSats > 128) {
         resetOdometryTicks();
         correctCoords();
@@ -100,6 +105,7 @@ void gps::poll10() {
   int32_t deltaLeft, deltaRight;
   float deltaDist;
 
+  _UTMmode = UTMmode;
   if ((millis() - lastReceived) > maxTimeout) {
     debug(L_DEBUG, (char *) F("gps::poll10: millis %lu, lastReceived %lu, maxTimeout %hu\n"), millis(),
           lastReceived, maxTimeout);
@@ -113,8 +119,13 @@ void gps::poll10() {
     deltaRight = odoSens->readTicks(1) - rightTicks;
     deltaDist = 0.5f * (float)(deltaLeft + deltaRight) * odoSens->ticksCm;
     angleCur = imu::degreePI(imuSens->readCurDegree(0));
-    deltaX = (deltaDist * sin(angleCur)) / KCORR_CM_TO_COORD;
-    deltaY = (deltaDist * cos(angleCur)) / KCORR_CM_TO_COORD;
+    if (UTMmode) {
+      deltaX = deltaDist * sin(angleCur);
+      deltaY = deltaDist * cos(angleCur);
+    } else {
+      deltaX = (deltaDist * sin(angleCur)) / KCORR_CM_TO_COORD;
+      deltaY = (deltaDist * cos(angleCur)) / KCORR_CM_TO_COORD;
+    }
     debug(L_NOTICE, (char *) F("gps before odo corr: %ld %ld\n"), latitudeRaw, longitudeRaw);
     latitude = latitudeRaw + (int32_t) deltaY;
     longitude = longitudeRaw + (int32_t) deltaX;
@@ -126,14 +137,24 @@ void gps::poll10() {
 
 // Bearing to the GPS point (-M_PI..M_PI)
 float gps::bearing(int32_t lat1, int32_t lon1, int32_t lat2, int32_t lon2) {
-  return atan2(lon2 - lon1, (lat2 - lat1) / cos(lat1 * 1.0e-7f * 0.001745329251f));
+  if (_UTMmode)
+    return atan2(lon2 - lon1, lat2 - lat1);
+  else
+    return atan2(lon2 - lon1, (lat2 - lat1) / cos(lat1 * 1.0e-7f * 0.001745329251f));
 } // float gps::bearing(int32_t lat1, int32_t lon1, int32_t lat2, int32_t lon2)
 
 float gps::distance(int32_t lat1, int32_t lon1, int32_t lat2, int32_t lon2) {
-  float dLat = (float)(lat2 - lat1);
-  float dLon = (float)(lon2 - lon1) * cos(lat1 * 1.0e-7f * 0.001745329251f);
+  float dLat, dLon;
 
-  return sqrt(dLat*dLat + dLon*dLon) * 0.0111318845f;
+  if (_UTMmode) {
+    dLat = (float)(lat2 - lat1) / 100.0f;
+    dLon = (float)(lon2 - lon1) / 100.0f;
+    return sqrt(dLat*dLat + dLon*dLon);
+  } else {
+    dLat = (float)(lat2 - lat1);
+    dLon = (float)(lon2 - lon1) * cos(lat1 * 1.0e-7f * 0.001745329251f);
+    return sqrt(dLat*dLat + dLon*dLon) * 0.0111318845f;
+  }
 } // float gps::distance(int32_t lat1, int32_t lon1, int32_t lat2, int32_t lon2) 
 
 // Calculate distance to the current position
@@ -143,20 +164,28 @@ float gps::calcDist(int32_t latitude, int32_t longitude) {
 
 // Sets coordinates for course correction
 // if precisionOnly set - stops when lost precision data
-void gps::setTarget(int32_t latitudeDest, int32_t longitudeDest, boolean precisionOnly, boolean splitWay) {
+void gps::setTarget(int32_t latitudeDest, int32_t longitudeDest, int16_t zone, boolean precisionOnly, boolean splitWay) {
   latitudeLast = latitudeDest;
   longitudeLast = longitudeDest;
   precisionTarg = precisionOnly;
+  zoneUTMTarg = zone;
   destReached = false;
   // calculating next point of the destination in split-way mode or just go to the coordinates
   if (!splitWay) {
     latitudeTarg = latitudeLast;
     longitudeTarg = longitudeLast;
-  } else 
-    // First split way point should be closer after turn
-    calcPoint(SPLIT_DISTANCE / 2, latitudeTarg, longitudeTarg, latitudeDest, longitudeDest);
+  } else {
+    if (distance(latitude, longitude, latitudeLast, longitudeLast) > (SPLIT_DISTANCE / 2)) {
+      // First split way point should be closer after turn
+      calcPoint(SPLIT_DISTANCE / 2, latitudeTarg, longitudeTarg, latitudeDest, longitudeDest);
+    } else {
+      // Target point is too close to do split way
+      latitudeTarg = latitudeLast;
+      longitudeTarg = longitudeLast;
+    }
+  }
   startAutocorrection = endAutocorrection = flagAutocorrection = false;
-} // void gps::setTarget(int32_t latitudeDest, int32_t longitudeDest, boolean precisionOnly, boolean splitWay)
+} // void gps::setTarget(int32_t latitudeDest, int32_t longitudeDest, int16_t zone, boolean precisionOnly, boolean splitWay)
 
 // Course error for gps navigation
 float gps::readCourseError() {
@@ -215,7 +244,7 @@ float gps::readCourseError() {
 #endif
 
   float d = imu::scalePI(degreeDestF - degreeCurF);
-  debug(L_INFO, (char *) F("gps::readCourseError: %f (%f %f)\n"), d, degreeDestF, degreeCurF);
+  debug(L_INFO, (char *) F("gps::readCourseError: %f (%f %f), to target: %fm\n"), d, degreeDestF, degreeCurF, curDist);
 
   // Range check
   if (d < -M_PI)
@@ -227,13 +256,16 @@ float gps::readCourseError() {
 } // float gps::readCourseError()
 
 // set GPS coordinates and time from external sources (ignore date/time if year == 0)
-void gps::setCoords(int32_t latitudeNew, int32_t longitudeNew, uint8_t numSatsNew,
-                    uint16_t yearNew, uint16_t monthNew, uint16_t dayNew,
-                    uint16_t hourNew, uint16_t minuteNew, uint16_t secondNew) {
+void gps::setCoords(int32_t latitudeNew, int32_t longitudeNew, int32_t altitudeNew,
+                    int16_t zone, uint8_t numSatsNew, uint16_t yearNew, uint16_t monthNew,
+                    uint16_t dayNew, uint16_t hourNew, uint16_t minuteNew, uint16_t secondNew) {
+  _UTMmode = UTMmode;
   latitude = latitudeNew;
   longitude = longitudeNew;
   latitudeRaw = latitudeNew;
   longitudeRaw = longitudeNew;
+  zoneUTMRaw = zoneUTM = zone;
+  altitude = altitudeRaw = altitudeNew;
   numSats = numSatsNew;
   if (numSats > 128) {
     resetOdometryTicks();
@@ -258,15 +290,18 @@ void gps::correctCoords() {
   float deltaX, deltaY;
 
   if (imuSens && (distCenter > 0)) {
-    deltaAngle = imu::degreePI(imu::scaleDegree(angleCenter + imuSens->readCurDegree(0)));
-    deltaX = ((float) distCenter * sin(deltaAngle)) / KCORR_CM_TO_COORD;
-    deltaY = ((float) distCenter * cos(deltaAngle)) / KCORR_CM_TO_COORD;
-    debug(L_DEBUG, (char *) F("gps corr: %03.3f %03.3f (%03.3f - %hd/%hd)\n"), deltaX, deltaY, deltaAngle, angleCenter, imuSens->readCurDegree(0));
-    latitudeRaw = latitudeRaw - (int32_t) deltaY;
-    longitudeRaw = longitudeRaw - (int32_t) deltaX;
-    latitude = latitudeRaw;
-    longitude = longitudeRaw;
-    debug(L_NOTICE, (char *) F("gps corr after: %ld %ld (%03.3f %03.3f)\n"), latitude, longitude, angleCenter, imu::degreePI(imuSens->readCurDegree(0)));
+    // Do not correct receiver position in UTM mode (should be done in odometry software!)
+    if (!UTMmode) {
+      deltaAngle = imu::degreePI(imu::scaleDegree(angleCenter + imuSens->readCurDegree(0)));
+      deltaX = ((float) distCenter * sin(deltaAngle)) / KCORR_CM_TO_COORD;
+      deltaY = ((float) distCenter * cos(deltaAngle)) / KCORR_CM_TO_COORD;
+      debug(L_DEBUG, (char *) F("gps corr: %03.3f %03.3f (%03.3f - %hd/%hd)\n"), deltaX, deltaY, deltaAngle, angleCenter, imuSens->readCurDegree(0));
+      latitudeRaw = latitudeRaw - (int32_t) deltaY;
+      longitudeRaw = longitudeRaw - (int32_t) deltaX;
+      latitude = latitudeRaw;
+      longitude = longitudeRaw;
+      debug(L_NOTICE, (char *) F("gps corr after: %ld %ld (%03.3f %03.3f)\n"), latitude, longitude, angleCenter, imu::degreePI(imuSens->readCurDegree(0)));
+    }
     // Check for compass autocorrection flags
     if (flagAutocorrection) {
       if (startAutocorrection) {
@@ -296,8 +331,13 @@ void gps::calcPoint(float dist, int32_t &latitudeP, int32_t &longitudeP,
   float angle, deltaX, deltaY;
 
   angle = bearing(latitude, longitude, latitudeDest, longitudeDest);  
-  deltaX = (dist * sin(angle) * 100.0f) / KCORR_CM_TO_COORD;
-  deltaY = (dist * cos(angle) * 100.0f) / KCORR_CM_TO_COORD;
+  if (_UTMmode) {
+    deltaX = (dist * sin(angle)) * 100.0f;
+    deltaY = (dist * cos(angle)) * 100.0f;
+  } else {
+    deltaX = (dist * sin(angle) * 100.0f) / KCORR_CM_TO_COORD;
+    deltaY = (dist * cos(angle) * 100.0f) / KCORR_CM_TO_COORD;
+  }
   latitudeP = latitude + (int32_t) deltaY;
   longitudeP = longitude + (int32_t) deltaX;
 } // void gps::calcPoint

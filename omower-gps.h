@@ -43,15 +43,24 @@ public:
   // Stop when within meters from given coordinates (precision mode)
   float stopDistancePrecision;
 
+  // UTM mode (all coordinates in meters * 100, latitude - Y, longitude - X, altitude - Z)
+  // Note, UTM mode is supported only with setCoords (via external GPS feeder),
+  // cannot be used if GPS is connected directly to the OMower
+  boolean UTMmode;
+  // Zone for UTM mode (not used yet), 19N is +19, 20S is -20
+  int16_t zoneUTM;
   // Number of satellites, if > 128 - precision data received from RTKLIB
   // 0 - no coordinates received (coordinates, speed, degree and date/time must be ignored)
   uint8_t numSats;
-  // Current coordinates (all coordinates in integer form of +/-DDDMMMMMMM)
+  // Current coordinates (all coordinates in integer form of +/-DDDMMMMMMM), altitude is MSL in meters*100 (not used really)
   int32_t latitude;
   int32_t longitude;
+  int32_t altitude;
   // Raw coordinates from GPS (without odometry correction but with correction of antenna position)
   int32_t latitudeRaw;
   int32_t longitudeRaw;
+  int32_t altitudeRaw;
+  int16_t zoneUTMRaw;
 
   // Offsets for all sectors
   float offsetSectors[AUTOCORR_SECTORS];
@@ -79,6 +88,7 @@ public:
 
   // Current target coordinates
   int32_t latitudeTarg, longitudeTarg;
+  int16_t zoneUTMTarg;
 
   // Constructor (var init)
   gps();
@@ -95,14 +105,14 @@ public:
   //  between start and end point (splitting the line to set of small lines),
   //  otherwise - it will try to reach the destination just (ignoring slipping
   //  on turns and such)
-  void setTarget(int32_t latitudeDest, int32_t longitudeDest, boolean precisionOnly, boolean splitWay);
+  void setTarget(int32_t latitudeDest, int32_t longitudeDest, int16_t zone, boolean precisionOnly, boolean splitWay);
 
   // Course error for PID controller
   float readCourseError();
 
   // set GPS coordinates and time from external sources (ignore date/time if year == 0)
-  void setCoords(int32_t latitudeNew, int32_t longitudeNew, uint8_t numSatsNew,
-                 uint16_t yearNew, uint16_t monthNew, uint16_t dayNew,
+  void setCoords(int32_t latitudeNew, int32_t longitudeNew, int32_t altitutdeNew, int16_t zone,
+                 uint8_t numSatsNew, uint16_t yearNew, uint16_t monthNew, uint16_t dayNew,
                  uint16_t hoursNew, uint16_t minuteNew, uint16_t secondNew);
   
   // Parse received GPS string(s)
