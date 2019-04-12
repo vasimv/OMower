@@ -11,6 +11,8 @@
 #include <std_msgs/UInt32MultiArray.h>
 #include <std_msgs/UInt16MultiArray.h>
 #include <std_msgs/Int16MultiArray.h>
+#include <geometry_msgs/Twist.h>
+#include <geometry_msgs/PoseStamped.h>
 #endif
 
 // ROS object
@@ -28,6 +30,11 @@ uint8_t rosNumDataSensors[(int) reportSensor::LAST_VALUE];
 uint8_t rosInputCmdBuf[64];
 uint16_t rosInputLength;
 boolean rosCmdBufProcessed = false;
+
+// Pointers to callbacks
+void (*pfCallBackMove)(float, float, float, float, float, float, float);
+void (*pfCallBackCmdVel)(float, float, float, float, float, float);
+void (*pfCallBackCurPose)(float, float, float, float, float, float, float);
 
 void cbCmdReceived(const std_msgs::UInt8MultiArray& msg) {
   rosCmdBufProcessed = false;
@@ -57,6 +64,24 @@ unsigned long omowerROSHardware::time() {
   return millis();
 }
 
+// /cmd_vel proxy callback
+void cbCmdVel(const geometry_msgs::Twist &vel) {
+  if (pfCallBackCmdVel)
+    pfCallBackCmdVel(vel.linear.x, vel.linear.y, vel.linear.z, vel.angular.x, vel.angular.y, vel.angular.z);
+} // void cbCmdVel(const geometry_msgs::Twist &vel)
+
+// /move_base_simple/goal proxy callback
+void cbMoveBaseSimple(const geometry_msgs::PoseStamped &goal) {
+  if (pfCallBackMove)
+    pfCallBackMove(goal.pose.position.x, goal.pose.position.y, goal.pose.position.z, goal.pose.orientation.x, goal.pose.orientation.y, goal.pose.orientation.z, goal.pose.orientation.w);
+} // void cbMoveBaseSimple(const geometry_msgs::PoseStamped &goal)
+
+// Current pose proxy callback
+void cbCurPose(const geometry_msgs::PoseStamped &pose) {
+  if (pfCallBackCurPose)
+    pfCallBackCurPose(pose.pose.position.x, pose.pose.position.y, pose.pose.position.z, pose.pose.orientation.x, pose.pose.orientation.y, pose.pose.orientation.z, pose.pose.orientation.w);
+} // void cbCurPose(const geometry_msgs::PoseStamped &pose)
+
 // ROS handler object
 ros::omowerNodeHandle nh;
 
@@ -73,6 +98,15 @@ ros::Publisher pubCmdOut("cmdOut", &strCmd);
 
 // pfodApp/Modbus input channel
 ros::Subscriber<std_msgs::UInt8MultiArray> subCmdIn("cmdIn", &cbCmdReceived );
+
+// /cmd_vel input topic
+ros::Subscriber<geometry_msgs::Twist> subCmdVel("cmd_vel", cbCmdVel);
+
+// /move_base_simple/goal input topic
+ros::Subscriber<geometry_msgs::PoseStamped> subMoveBaseSimple("move_base_simple/goal", &cbMoveBaseSimple);
+
+// Current coordinates of robot's center (base_link) in UTM (from visual or other odometry source) in form of Pose message
+ros::Subscriber<geometry_msgs::PoseStamped> subCurPose("current_position", &cbCurPose);
 
 // Motors PWM output (int16_t [2])
 std_msgs::Int16MultiArray pwmMot;
@@ -182,6 +216,15 @@ void omowerROS::advertiseSubscribe() {
   // Subscribe to input commands
   nh.subscribe(subCmdIn);
 
+  // Subscribe to /move_base_simple/goal
+  nh.subscribe(subMoveBaseSimple);
+
+  // Subscribe to /current_position (proxying to omower-gps module in UTM mode)
+  nh.subscribe(subCurPose);
+
+  // Subscribe to /cmd_vel
+  nh.subscribe(subCmdVel);
+
   nh.spinOnce();
 #endif
 } // void advertiseSubscribe()
@@ -190,6 +233,8 @@ void omowerROS::spinOnce() {
   int cnt = 0;
 
 #ifdef USE_ROS
+  if (paused)
+    return;
   nh.spinOnce();
 
   // Check and report first 5 changed sensors
@@ -249,7 +294,11 @@ omowerROS::omowerROS() {
     rosNumDataSensors[i] = 0;
   }
   currentSensor = (uint8_t) reportSensor::DEBUG;
+  pfCallBackMove = NULL;
+  pfCallBackCmdVel = NULL;
+  pfCallBackCurPose = NULL;
 #endif
+  paused = false;
 } // omowerROS::omowerROS()
 
 void omowerROS::reportToROS(reportSensor sensor, uint8_t *data, uint8_t num) {
@@ -382,3 +431,32 @@ void omowerROS::publishSensor(reportSensor sensor, uint8_t *data, uint8_t num) {
   }
 #endif
 } // void omowerROS::publishSensor(reportSensor sensor, uint8_t *data, uint8_t num)
+
+void omowerROS::pause() {
+  paused = true;
+}
+
+void omowerROS::unpause() {
+  paused = false;
+}
+
+// Set callback for /move_base_simple/goal 
+void omowerROS::setCallBackMove(void (*pfMove)(float, float, float, float, float, float, float)) {
+#ifdef USE_ROS
+  pfCallBackMove = pfMove;
+#endif
+} // void omowerROS::setCallBackMove(void (*pfMove)(float, float, float, float, float, float, float))
+
+// Set callback for /current_position (coordinates in UTM for omower-gps module)
+void omowerROS::setCallBackCurPose(void (*pfCurPose)(float, float, float, float, float, float, float)) {
+#ifdef USE_ROS
+  pfCallBackCurPose = pfCurPose;
+#endif
+} // void omowerROS::setCallBackCurPose(void (*pfMove)(float, float, float, float, float, float, float))
+
+// Set callback for /cmd_vel
+void omowerROS::setCallBackCmdVel(void (*pfCmdVel)(float, float, float, float, float, float)) {
+#ifdef USE_ROS
+  pfCallBackCmdVel = pfCmdVel;
+#endif
+} // void omowerROS::setCallBackCmdVel(void (*pfCmdVel)(float, float, float, float, float, float))
