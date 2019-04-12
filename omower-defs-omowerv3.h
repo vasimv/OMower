@@ -94,6 +94,15 @@
 // 50 * 255 -> 127.5 uS PWM period
 #define MOT_PWM_TICK_WIDTH 50
 
+// Maximum RPM of motors
+#define MAXIMUM_RPM 20.0f
+
+// Perimeter of wheel (in meters)
+#define WHEEL_PERIMETER 0.798f
+
+// Wheel base (in meters)
+#define WHEEL_BASE 0.5f
+
 // 2 dual motor drivers (separate channels for quad wheels)
 #define MOT_QUAD_WHEELS
 #define PIN_MOT_LEFTBACK_FAULT 46

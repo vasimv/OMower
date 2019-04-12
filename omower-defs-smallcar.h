@@ -89,6 +89,15 @@
 // 50 * 255 -> 127.5 uS PWM period
 #define MOT_PWM_TICK_WIDTH 50
 
+// Maximum RPM of motors
+#define MAXIMUM_RPM 30.0f
+
+// Perimeter of wheel (in meters)
+#define WHEEL_PERIMETER 0.189f
+
+// Wheel base (in meters)
+#define WHEEL_BASE 0.2f
+
 // MAX11617 ADC channels numbers for FB pins
 #define CH_ADC_LEFTFORW 0
 #define CH_ADC_RIGHTFORW 1

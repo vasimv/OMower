@@ -93,6 +93,15 @@
 // 50 * 255 -> 127.5 uS PWM period
 #define MOT_PWM_TICK_WIDTH 50
 
+// Maximum RPM of the motor
+#define MAXIMUM_RPM 43.3f
+
+// Perimeter of wheel (in meters)
+#define WHEEL_PERIMETER 0.302f
+
+// Wheel base (in meters)
+#define WHEEL_BASE 0.206f
+
 // MAX11617 ADC channels numbers for FB pins
 #define CH_ADC_LEFTFORW 0
 #define CH_ADC_RIGHTFORW 1
@@ -111,8 +120,8 @@
 #define PIN_MOW_S_END 41
 
 // Odometry sensor defines (no actual things on the chassis)
-#define _NUM_ODOMETERS_WHEELS 2                                                                               
-#define _NUM_ODOMETERS_MOW 1      
+#define _NUM_ODOMETERS_WHEELS 0
+#define _NUM_ODOMETERS_MOW 1
 
 // Number of steps per mm of height
 #define STEPS_PER_MM 50

@@ -168,6 +168,28 @@ void motors::poll10() {
       updateSpeed(leftSpeed, rightSpeed, accel);
       break;
 
+    // Moving by setting RPM speed
+    case _moveStatus::MOVE_RPM:
+      if (odometrySens && (odometrySens->numThings() >= 2)) {
+        // TODO: PID regulation with odometers
+      } else {
+        // Calculating PWM by maximum RPM
+        float maxRPC = (maxRPM / 600.0f);
+        leftSpeed = (float) maxPWM * leftRPC / maxRPC;
+        rightSpeed = (float) maxPWM * rightRPC / maxRPC;
+        // Range check
+        if (leftSpeed > maxSpeed)
+          leftSpeed = maxSpeed;
+        if (rightSpeed > maxSpeed)
+          rightSpeed = maxSpeed;
+        if (leftSpeed < -maxSpeed)
+          leftSpeed = -maxSpeed;
+        if (rightSpeed < -maxSpeed)
+          rightSpeed = -maxSpeed;
+        updateSpeed(leftSpeed, rightSpeed, accel);
+      }
+      break;
+
     // Shouldn't happen
     default:
       curStatus = _moveStatus::STOP;
@@ -379,6 +401,23 @@ void motors::moveCourse(navThing *sensor, unsigned long ms) {
   debug(L_INFO, "motors::moveCourse: navThing %X (%f) ms %lu\n", sensor, sensor->readCourseError(), ms);
 } // void motors::moveCourse(navThing *sensor, unsigned long ms)
 
+// Set RPM on motors (for ms milliseconds)
+void motors::setRPM(float leftRPM, float rightRPM, unsigned long ms) {
+  if (leftRPM > maxRPM)
+    leftRPM = maxRPM;
+  if (leftRPM < -maxRPM)
+    leftRPM = -maxRPM;
+  if (rightRPM > maxRPM)
+    rightRPM = maxRPM;
+  if (rightRPM < -maxRPM)
+    rightRPM = -maxRPM;
+  leftRPC = leftRPM / 600.0f;
+  rightRPC = rightRPM / 600.0f;
+  endTime = ms + millis();
+  curStatus = _moveStatus::MOVE_RPM;
+  debug(L_INFO, "motors::setRPM: leftRPC: %f, rightRPC: %f\n", leftRPC, rightRPC);
+} // void motors::setRPM(float leftRPM, float rightRPM)
+
 // Current PWM of motors
 int16_t motors::curPWM(numThing n) {
   if (n == 0)
@@ -440,6 +479,9 @@ _hwstatus motors::begin() {
   pinMode(PIN_MOT_RIGHTFORW_STEP, OUTPUT);
   digitalWrite(PIN_MOT_RIGHTFORW_STEP, LOW);
   #endif
+  maxRPM = MAXIMUM_RPM;
+  distRevolution = WHEEL_PERIMETER;
+  wheelBase = WHEEL_BASE;
   return _hwstatus::ONLINE;
 } // _hwstatus motors::begin()
 

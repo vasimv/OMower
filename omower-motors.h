@@ -21,6 +21,12 @@ public:
   currentMotors *currentSens;
 
   // Settings variables:
+  // Maximum RPM of motors
+  float maxRPM;
+  // Wheel base (in meters)
+  float wheelBase;
+  // Distance travelled by one revolution (wheel's perimeter length)
+  float distRevolution;
   // acceleration per 1/10 second, 1..255
   uint8_t accel;
   // Emergency stop acceleration, 1..255
@@ -76,6 +82,9 @@ public:
   // Sensor must return error of needed course by readCourseError()
   void moveCourse(navThing *sensor, unsigned long ms);
 
+  // Set RPM speeds on motors (uses odometry if available)
+  void setRPM(float leftRPM, float rightRPM, unsigned long ms);
+
   // Soft (recoverable) error status (overcurrent, odometry, etc),
   // requires re-initialization
   _hwstatus softError();
@@ -92,6 +101,10 @@ private:
   int16_t leftPWM = 0;
   int16_t rightPWM = 0;
 
+  // RPM speed set by setRPM
+  float leftRPC = 0;
+  float rightRPC = 0;
+
   uint8_t errorStatus;
 
   // When we should end movement
@@ -107,7 +120,7 @@ private:
   int16_t leftSpeed, rightSpeed;
 
   // Current status of movement
-  enum class _moveStatus : int8_t { EMERG_STOP = -1, STOP = 0, MOVE = 1, ROLL = 2, MOVE_NAV = 3, ROLL_NAV = 4};
+  enum class _moveStatus : int8_t { EMERG_STOP = -1, STOP = 0, MOVE = 1, ROLL = 2, MOVE_NAV = 3, ROLL_NAV = 4, MOVE_RPM = 5};
 
   // Current status, after finishing (by timeout) - set to "STOP"
   _moveStatus curStatus = _moveStatus::STOP;
