@@ -8,9 +8,6 @@
 // Number of channels to scan
 #define _ADC_11617_CHANNELS_NUM 12
 
-// Exponential filter koefficient (1/10)
-#define _ADC_11617_FILTER_K 10
-
 // Results array
 volatile uint16_t adc11617Arr[_ADC_11617_CHANNELS_NUM];
 
